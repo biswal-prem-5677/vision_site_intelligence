@@ -1,72 +1,53 @@
 # Vision-Driven Site Intelligence
 
-**Equipment Utilisation & Safety Monitoring — Remote & Cloud-Ready Industrial Control Center**
+**Equipment Utilisation & Safety Monitoring — Industrial Computer-Vision Command Center**
 
-A software-only computer vision platform that transforms ordinary camera feeds (webcam, WebRTC browser camera, or video clips) into actionable site intelligence. It automatically detects and tracks workers, monitors restricted danger zones, estimates visual asset activity, identifies safety events, calculates operational metrics, and generates AI executive summaries.
-
----
-
-## Live Public HTTPS Demo
-🔗 **Public Demo URL**: `https://vision-site-intelligence.streamlit.app` *(Deployable to Streamlit Community Cloud)*
+A unified computer vision platform that transforms camera feeds (webcam, WebRTC browser camera, or video clips) into actionable operational intelligence. It automatically detects and tracks workers, monitors multi-zone safety boundaries (`Crane Swing Area`, `Excavation Zone`, `Restricted Personnel Area`, `Equipment Operating Area`), provides a visual polygon zone editor, estimates visual asset activity, logs safety events, and generates executive AI reports.
 
 ---
 
-## Tech Stack & Architecture
+## Technical Stack & Architecture
 
-- **Core**: Python 3.10+, Streamlit 1.30+
+- **Core Framework**: Python 3.10+, Streamlit 1.30+
 - **Computer Vision**: Ultralytics YOLOv8n (`yolov8n.pt`)
-- **Object Tracking**: IoU & Centroid Tracker
+- **Object Tracking**: Centroid & IoU Tracker
 - **Remote Camera Access**: `streamlit-webrtc` with Google STUN server (`stun:stun.l.google.com:19302`)
-- **Analytics & Visuals**: Plotly Express & Custom Dark Navy CSS Design System
+- **Safety Engine**: Ray-Casting Multi-Zone Point-in-Polygon Engine
+- **Analytics & Visuals**: Plotly Express & Custom Industrial Dark Theme CSS (`#090d12`)
 - **Database & Persistence**: SQLite3 (`data/site.db`)
-- **Executive AI Reports**: Gemini 2.0 Flash (`google-generativeai`) with automatic rule-based fallback
+- **Executive AI Reports**: Gemini 2.0 Flash with automatic rule-based fallback
 
 ---
 
-## Important Technical Disclaimer
-
-> ⚠️ **IMPORTANT CLAIM**: This MVP performs vision-based activity and utilisation estimation directly from visual camera observations. It does **NOT** measure physical equipment telemetry (e.g., engine CAN bus, fuel consumption, or hydraulic pressure sensors).
-
----
-
-## Remote Camera Architecture
+## System Architecture
 
 ```
-[ User Browser (Laptop / Android Chrome) ]
-                    │
-            Camera Permission
-                    │
-             Browser Webcam
-                    │
-           WebRTC Stream (HTTPS)
-                    │
-          Google STUN Server
-                    │
-     [ Streamlit Community Cloud ]
-                    │
-           WebRTCVideoProcessor
-                    │
-             YOLOv8n Detector
-                    │
-             Simple Tracker
-                    │
-             Safety Engine  ───►  Zone Violations & Events
-                    │
-            Activity Engine ───►  Active / Idle Utilisation
-                    │
-            Executive UI & Gemini AI Summary
+                                GLOBAL APPLICATION SHELL
+                                           │
+                    ┌──────────────────────┴──────────────────────┐
+                    │                                             │
+         Persistent WebRTC Transport                     Global Camera Runtime
+                    │                                             │
+             YOLOv8n Detector                              Centroid Tracker
+                    │                                             │
+       Multi-Zone Safety Engine                         Activity & Utilisation Engine
+  (Crane Swing, Excavation, Restricted)                 (Active / Idle Classification)
+                    │                                             │
+                    └──────────────────────┬──────────────────────┘
+                                           │
+                             Industrial Command Center UI
+                 (Dashboard, Live Monitor, Safety Zones, Analytics, AI Reports)
 ```
 
 ---
 
-## Remote Usage (No Installation Required)
+## Core Capabilities & Honest Limitations
 
-1. Open the public HTTPS deployment URL in any browser (**Chrome desktop**, **Edge**, or **Android Chrome**).
-2. Go to **Live Monitor** or **Dashboard**.
-3. Select **Browser Camera (WebRTC)** as the Camera Source.
-4. Click **START**.
-5. Grant camera permission when prompted by your browser.
-6. The live feed will display real-time bounding boxes, track IDs, danger zone boundaries, and safety metrics.
+1. **Global Camera Runtime**: Camera session is maintained as a single global application resource. Navigating between pages never restarts the WebRTC stream, resets tracker IDs, or reloads models.
+2. **Multi-Zone Safety System**: Evaluates 4 categorized Safety Zones simultaneously with independent event lifecycles (`ENTRY` $\rightarrow$ `SUSTAINED` $\rightarrow$ `CLEARED`).
+3. **Interactive Visual Zone Editor**: Dedicated **Safety Zones** page allows visual boundary editing over a live camera preview canvas.
+4. **Detected Assets (COCO Proxies)**: Equipment tracking uses COCO vehicle classes (`Car`, `Truck`, `Bus`, `Motorcycle`, `Bicycle`) as visual proxies for heavy machinery. Visual activity and idle duration are computed directly from motion.
+5. **PPE Detection Disclaimer**: Standard YOLOv8n COCO models detect person bounding boxes. Construction PPE compliance (helmets/vests) requires fine-tuned construction dataset weights; the interface honestly indicates `PPE DETECTION: Not configured` rather than faking compliance metrics.
 
 ---
 
@@ -74,7 +55,7 @@ A software-only computer vision platform that transforms ordinary camera feeds (
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/<YOUR_GITHUB_USERNAME>/vision_site_intelligence.git
+git clone https://github.com/biswal-prem-5677/vision_site_intelligence.git
 cd vision_site_intelligence
 
 # 2. Create virtual environment
@@ -102,7 +83,7 @@ streamlit run app.py
 
 1. Push repository to GitHub.
 2. Go to [share.streamlit.io](https://share.streamlit.io) and create a **New App**.
-3. Select your repository, set main file to `app.py`, and set Python version to `3.10`.
+3. Select repository `biswal-prem-5677/vision_site_intelligence`, set branch to `main`, main file to `app.py`.
 4. Add `GEMINI_API_KEY` under **Secrets** if available.
 5. Click **Deploy!**
 

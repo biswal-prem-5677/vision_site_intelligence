@@ -38,6 +38,7 @@ SAFETY_ZONES = [
         "color_hex": "#ef4444",
         "icon": "🔴",
         "severity": "HIGH",
+        "enabled": True,
         "polygon": [(0.1, 0.1), (0.45, 0.1), (0.45, 0.45), (0.1, 0.45)],
     },
     {
@@ -47,6 +48,7 @@ SAFETY_ZONES = [
         "color_hex": "#f97316",
         "icon": "🟠",
         "severity": "HIGH",
+        "enabled": True,
         "polygon": [(0.55, 0.1), (0.9, 0.1), (0.9, 0.45), (0.55, 0.45)],
     },
     {
@@ -56,6 +58,7 @@ SAFETY_ZONES = [
         "color_hex": "#dc2626",
         "icon": "🔴",
         "severity": "HIGH",
+        "enabled": True,
         "polygon": [(0.3, 0.55), (0.7, 0.55), (0.7, 0.9), (0.3, 0.9)],
     },
     {
@@ -65,6 +68,7 @@ SAFETY_ZONES = [
         "color_hex": "#eab308",
         "icon": "🟡",
         "severity": "MEDIUM",
+        "enabled": True,
         "polygon": [(0.05, 0.55), (0.25, 0.55), (0.25, 0.9), (0.05, 0.9)],
     },
 ]

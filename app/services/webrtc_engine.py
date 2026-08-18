@@ -6,6 +6,7 @@ import numpy as np
 from streamlit_webrtc import VideoProcessorBase, RTCConfiguration
 
 from app.config import (
+    SAFETY_ZONES,
     DANGER_ZONE_POLYGON,
     PROCESS_FPS,
     EQUIPMENT_CLASSES,
@@ -41,6 +42,7 @@ class WebRTCVideoProcessor(VideoProcessorBase):
         self._last_process_time = 0.0
         self.frame_buffer = None
         self.danger_zone_enabled = True
+        self.zones = list(SAFETY_ZONES)
 
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         img = frame.to_ndarray(format="bgr24")
@@ -68,7 +70,7 @@ class WebRTCVideoProcessor(VideoProcessorBase):
             # Safety Engine
             active_violations = 0
             if self.danger_zone_enabled:
-                safety_events, active_violations = check_safety(tracked, w, h, now)
+                safety_events, active_violations = check_safety(tracked, w, h, now, zones=self.zones)
                 if safety_events:
                     flush_events(safety_events)
                     with self.lock:
@@ -78,19 +80,21 @@ class WebRTCVideoProcessor(VideoProcessorBase):
 
             # Annotations
             ann = img.copy()
-            if self.danger_zone_enabled:
-                for zone in SAFETY_ZONES:
+            if self.danger_zone_enabled and self.zones:
+                for zone in self.zones:
+                    if not zone.get("enabled", True):
+                        continue
                     pts = np.array(
                         [[int(p[0] * w), int(p[1] * h)] for p in zone["polygon"]],
                         dtype=np.int32,
                     )
-                    bgr = zone["color_bgr"]
+                    bgr = zone.get("color_bgr", (0, 0, 255))
                     overlay = ann.copy()
                     cv2.fillPoly(overlay, [pts], (int(bgr[0] * 0.3), int(bgr[1] * 0.3), int(bgr[2] * 0.3)))
                     cv2.addWeighted(overlay, 0.35, ann, 0.65, 0, ann)
                     cv2.polylines(ann, [pts], isClosed=True, color=bgr, thickness=2)
                     cv2.putText(
-                        ann, zone["name"].upper(),
+                        ann, zone.get("name", "ZONE").upper(),
                         (pts[0][0] + 5, max(pts[0][1] - 6, 15)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, bgr, 2,
                     )

@@ -37,9 +37,21 @@ def init_db():
             event_type TEXT NOT NULL,
             severity TEXT NOT NULL,
             track_id INTEGER,
-            message TEXT
+            message TEXT,
+            zone_id TEXT,
+            zone_name TEXT
         )
     """)
+
+    # Column migrations for pre-existing SQLite database files
+    try:
+        cur.execute("ALTER TABLE events ADD COLUMN zone_id TEXT")
+    except Exception:
+        pass
+    try:
+        cur.execute("ALTER TABLE events ADD COLUMN zone_name TEXT")
+    except Exception:
+        pass
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS asset_metrics (
@@ -67,12 +79,12 @@ def insert_detection(timestamp, track_id, class_name, confidence, x1, y1, x2, y2
     conn.close()
 
 
-def insert_event(timestamp, event_type, severity, track_id, message):
+def insert_event(timestamp, event_type, severity, track_id, message, zone_id=None, zone_name=None):
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO events (timestamp, event_type, severity, track_id, message) VALUES (?, ?, ?, ?, ?)",
-        (timestamp, event_type, severity, track_id, message),
+        "INSERT INTO events (timestamp, event_type, severity, track_id, message, zone_id, zone_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (timestamp, event_type, severity, track_id, message, zone_id, zone_name),
     )
     conn.commit()
     conn.close()

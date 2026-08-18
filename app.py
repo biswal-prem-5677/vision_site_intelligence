@@ -1,10 +1,11 @@
 """
-Site Intelligence Dashboard — Professional Industrial Control Center
-Laptop webcam + YOLO + tracking + safety monitoring + asset utilisation
+Site Intelligence Dashboard — Industrial Operations Command Center
+Real-time vision monitoring, multi-zone safety intelligence, and operational analytics.
 """
 
 import os
 import time
+import copy
 import cv2
 import numpy as np
 import streamlit as st
@@ -38,279 +39,24 @@ from app.services.activity_engine import (
     update_activity,
     get_asset_summary,
     get_display_label,
+    _is_person,
+    _is_equipment,
 )
 from app.services.risk_engine import calculate_safety_score
 from app.services.gemini_service import GeminiService
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Page Setup
+# 1. Page Setup & Initialization
 # ─────────────────────────────────────────────────────────────────────────────
+load_dotenv()
+init_db()
+
 st.set_page_config(
-    page_title="Site Intelligence",
+    page_title="Site Intelligence | Industrial Command Center",
     page_icon="🏗️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Professional Dark Theme CSS
-# ─────────────────────────────────────────────────────────────────────────────
-st.markdown("""
-<style>
-    :root {
-        --bg-primary: #0f1419;
-        --bg-secondary: #1a1f2b;
-        --bg-card: #1e2432;
-        --bg-hover: #252d3a;
-        --border: #2a3342;
-        --border-light: #3a4558;
-        --text-primary: #e8eaed;
-        --text-secondary: #9aa0a8;
-        --text-muted: #6b7280;
-        --accent-blue: #3b82f6;
-        --accent-green: #10b981;
-        --accent-amber: #f59e0b;
-        --accent-red: #ef4444;
-        --accent-purple: #8b5cf6;
-    }
-
-    * { box-sizing: border-box; }
-
-    body {
-        background: var(--bg-primary);
-        color: var(--text-primary);
-        font-family: 'Inter', -apple-system, system-ui, sans-serif;
-    }
-
-    .main .block-container {
-        padding: 0.8rem 1.2rem;
-        max-width: 100%;
-    }
-
-    /* Header */
-    .site-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0.6rem 0;
-        border-bottom: 1px solid var(--border);
-        margin-bottom: 1rem;
-    }
-    .site-header-left {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-    .site-title {
-        font-size: 1.1rem;
-        font-weight: 700;
-        letter-spacing: 0.05em;
-        color: var(--text-primary);
-        text-transform: uppercase;
-    }
-    .site-subtitle {
-        font-size: 0.7rem;
-        color: var(--text-muted);
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-    }
-    .live-indicator {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 3px 10px;
-        border-radius: 12px;
-        font-size: 0.7rem;
-        font-weight: 600;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-    }
-    .live-online {
-        background: rgba(16, 185, 129, 0.15);
-        color: var(--accent-green);
-        border: 1px solid rgba(16, 185, 129, 0.3);
-    }
-    .live-offline {
-        background: rgba(107, 114, 128, 0.15);
-        color: var(--text-muted);
-        border: 1px solid rgba(107, 114, 128, 0.3);
-    }
-    .live-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        animation: pulse 2s infinite;
-    }
-    .live-online .live-dot { background: var(--accent-green); }
-    .live-offline .live-dot { background: var(--text-muted); animation: none; }
-
-    @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.4; }
-    }
-
-    /* Sidebar */
-    [data-testid="stSidebar"] {
-        background: var(--bg-secondary) !important;
-        border-right: 1px solid var(--border);
-    }
-    [data-testid="stSidebar"] .stButton > button {
-        background: transparent;
-        border: none;
-        color: var(--text-secondary);
-        font-size: 0.85rem;
-        padding: 8px 12px;
-        border-radius: 6px;
-        text-align: left;
-        width: 100%;
-        justify-content: flex-start;
-        transition: all 0.15s;
-    }
-    [data-testid="stSidebar"] .stButton > button:hover {
-        background: var(--bg-hover);
-        color: var(--text-primary);
-    }
-
-    /* Metric cards */
-    .metric-card {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 14px 16px;
-        transition: border-color 0.15s;
-    }
-    .metric-card:hover {
-        border-color: var(--border-light);
-    }
-    .metric-label {
-        font-size: 0.7rem;
-        font-weight: 600;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--text-muted);
-        margin-bottom: 4px;
-    }
-    .metric-value {
-        font-size: 1.6rem;
-        font-weight: 700;
-        color: var(--text-primary);
-        line-height: 1.2;
-    }
-    .metric-sub {
-        font-size: 0.72rem;
-        color: var(--text-secondary);
-        margin-top: 2px;
-    }
-
-    /* Cards */
-    .panel {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 16px;
-    }
-    .panel-title {
-        font-size: 0.75rem;
-        font-weight: 600;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: var(--text-muted);
-        margin-bottom: 12px;
-    }
-
-    /* Status colors */
-    .status-green { color: var(--accent-green); }
-    .status-amber { color: var(--accent-amber); }
-    .status-red { color: var(--accent-red); }
-    .status-blue { color: var(--accent-blue); }
-
-    .badge {
-        display: inline-block;
-        padding: 2px 8px;
-        border-radius: 4px;
-        font-size: 0.7rem;
-        font-weight: 600;
-        letter-spacing: 0.03em;
-    }
-    .badge-green { background: rgba(16,185,129,0.15); color: var(--accent-green); }
-    .badge-amber { background: rgba(245,158,11,0.15); color: var(--accent-amber); }
-    .badge-red { background: rgba(239,68,68,0.15); color: var(--accent-red); }
-    .badge-blue { background: rgba(59,130,246,0.15); color: var(--accent-blue); }
-    .badge-gray { background: rgba(107,114,128,0.15); color: var(--text-muted); }
-
-    /* Event table */
-    .event-row {
-        padding: 10px 12px;
-        border-radius: 6px;
-        border: 1px solid var(--border);
-        margin-bottom: 6px;
-        background: var(--bg-secondary);
-    }
-    .event-row-high { border-left: 3px solid var(--accent-red); }
-    .event-row-medium { border-left: 3px solid var(--accent-amber); }
-    .event-row-low { border-left: 3px solid var(--accent-green); }
-
-    /* Table */
-    table.dataframe {
-        font-size: 0.82rem !important;
-    }
-    table.dataframe th {
-        background: var(--bg-secondary) !important;
-        color: var(--text-muted) !important;
-        font-weight: 600 !important;
-        text-transform: uppercase !important;
-        font-size: 0.72rem !important;
-        letter-spacing: 0.05em !important;
-        border-bottom: 1px solid var(--border) !important;
-        padding: 8px 12px !important;
-    }
-    table.dataframe td {
-        padding: 8px 12px !important;
-        border-bottom: 1px solid var(--border) !important;
-    }
-
-    /* H1/H2 */
-    h1, h2, h3 {
-        color: var(--text-primary) !important;
-    }
-
-    /* Slider */
-    [data-testid="stSlider"] { color: var(--accent-blue); }
-
-    /* Scrollbar */
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: var(--bg-primary); }
-    ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
-
-    /* Native Streamlit element overrides */
-    div[data-testid="stMetricValue"] {
-        font-size: 1.6rem;
-        font-weight: 700;
-        color: var(--text-primary);
-    }
-    div[data-testid="stMetricLabel"] {
-        font-size: 0.7rem;
-        font-weight: 600;
-        color: var(--text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-    div[data-testid="stMetricDelta"] {
-        font-size: 0.75rem;
-    }
-    [data-testid="stHorizontalBlock"] > div {
-        gap: 0.6rem;
-    }
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Init
-# ─────────────────────────────────────────────────────────────────────────────
-load_dotenv()
-init_db()
 
 def _get_gemini_api_key() -> str:
     key = ""
@@ -332,7 +78,7 @@ _defaults = {
     "last_frame_time": 0.0,
     "session_events": [],
     "metrics": SiteMetrics(),
-    "ai_summary": "Start camera and visit AI Reports to generate a site summary.",
+    "ai_summary": "Start camera to begin real-time site monitoring.",
     "last_summary_time": 0.0,
     "fps": 0.0,
     "inference_fps": 0.0,
@@ -341,6 +87,8 @@ _defaults = {
     "confidence_threshold": 0.5,
     "idle_threshold": 3.0,
     "danger_zone_enabled": True,
+    "safety_zones": copy.deepcopy(SAFETY_ZONES),
+    "editing_zone_id": "crane_swing",
 }
 for key, val in _defaults.items():
     if key not in st.session_state:
@@ -361,7 +109,165 @@ if "_frame_skip" not in st.session_state:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Camera & Helper Functions (defined before sidebar usage)
+# 2. High Density Industrial Command Center CSS
+# ─────────────────────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+    :root {
+        --bg-primary: #090d12;
+        --bg-secondary: #121820;
+        --bg-card: #18202c;
+        --bg-hover: #222c3c;
+        --border: #253040;
+        --border-light: #34445c;
+        --text-primary: #e8eaed;
+        --text-secondary: #a0aec0;
+        --text-muted: #64748b;
+        --accent-blue: #3b82f6;
+        --accent-green: #10b981;
+        --accent-amber: #f59e0b;
+        --accent-red: #ef4444;
+        --accent-purple: #8b5cf6;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    }
+
+    .main .block-container {
+        padding: 0.8rem 1.2rem;
+        max-width: 100%;
+    }
+
+    /* Command Header */
+    .command-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.8rem 1.2rem;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        margin-bottom: 1rem;
+    }
+    .command-title {
+        font-size: 1.2rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        color: var(--text-primary);
+        text-transform: uppercase;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .command-subtitle {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-top: 2px;
+    }
+    .status-badge-container {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+    }
+    .pill-green { background: rgba(16, 185, 129, 0.15); color: var(--accent-green); border: 1px solid rgba(16, 185, 129, 0.3); }
+    .pill-amber { background: rgba(245, 158, 11, 0.15); color: var(--accent-amber); border: 1px solid rgba(245, 158, 11, 0.3); }
+    .pill-red { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); border: 1px solid rgba(239, 68, 68, 0.3); }
+    .pill-gray { background: rgba(100, 116, 139, 0.15); color: var(--text-muted); border: 1px solid rgba(100, 116, 139, 0.3); }
+
+    /* Industrial Panels */
+    .panel {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 14px;
+    }
+    .panel-title {
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: var(--text-muted);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+    }
+
+    /* KPI Cards */
+    .metric-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 12px 14px;
+    }
+    .metric-label {
+        font-size: 0.68rem;
+        font-weight: 600;
+        color: var(--text-muted);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+    }
+    .metric-value {
+        font-size: 1.6rem;
+        font-weight: 800;
+        color: var(--text-primary);
+        line-height: 1.2;
+        margin: 4px 0 2px;
+    }
+    .metric-sub {
+        font-size: 0.68rem;
+        color: var(--text-secondary);
+    }
+
+    /* Event Rows */
+    .event-row {
+        padding: 8px 10px;
+        border-radius: 4px;
+        margin-bottom: 6px;
+        font-size: 0.8rem;
+        border-left: 3px solid var(--border-light);
+        background: var(--bg-secondary);
+    }
+    .event-row-high { border-left-color: var(--accent-red); background: rgba(239, 68, 68, 0.08); }
+    .event-row-medium { border-left-color: var(--accent-amber); background: rgba(245, 158, 11, 0.08); }
+    .event-row-low { border-left-color: var(--accent-green); background: rgba(16, 185, 129, 0.08); }
+
+    /* Badges */
+    .badge {
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 0.65rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+    .badge-green { background: rgba(16, 185, 129, 0.2); color: var(--accent-green); }
+    .badge-amber { background: rgba(245, 158, 11, 0.2); color: var(--accent-amber); }
+    .badge-red { background: rgba(239, 68, 68, 0.2); color: var(--accent-red); }
+    .badge-blue { background: rgba(59, 130, 246, 0.2); color: var(--accent-blue); }
+    .badge-gray { background: rgba(100, 116, 139, 0.2); color: var(--text-muted); }
+</style>
+""", unsafe_allow_html=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. Global Camera Runtime & Shared Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 def _start_camera():
     if st.session_state.camera_running:
@@ -386,9 +292,9 @@ def _start_camera():
             st.session_state.last_frame_time = 0.0
             st.session_state.last_summary_time = 0.0
             st.session_state._last_process_time = 0.0
-            st.session_state.ai_summary = "Camera active — visit AI Reports for site summary."
+            st.session_state.ai_summary = "Camera active — visit AI Reports for executive summary."
         else:
-            st.error("Cannot open camera — check webcam connection")
+            st.error("Cannot open local camera source.")
     except Exception as e:
         st.error(f"Camera error: {e}")
 
@@ -405,7 +311,7 @@ def _clear_data():
     clear_all_data()
     st.session_state.session_events = []
     st.session_state.metrics = SiteMetrics()
-    st.session_state.ai_summary = "Data cleared. Start camera to begin."
+    st.session_state.ai_summary = "Data cleared. Start camera to begin monitoring."
     st.session_state.trk = SimpleTracker()
     st.session_state.frame_buffer = None
     st.session_state.active_violations = 0
@@ -414,7 +320,62 @@ def _clear_data():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Sidebar Navigation
+# 4. Global Persistent Shell Header & WebRTC Mount
+# ─────────────────────────────────────────────────────────────────────────────
+# Persistent Top Command Header
+sys_status_class = "pill-green" if st.session_state.camera_running else "pill-gray"
+sys_status_text = "● SYSTEM LIVE" if st.session_state.camera_running else "○ SYSTEM READY"
+cam_status_text = f"CAMERA: {st.session_state.camera_source.split()[0]}"
+
+st.markdown(f"""
+<div class="command-header">
+    <div>
+        <div class="command-title">🏗️ SITE INTELLIGENCE COMMAND CENTER</div>
+        <div class="command-subtitle">Real-Time Computer Vision • Multi-Zone Safety Engine • Operational Analytics</div>
+    </div>
+    <div class="status-badge-container">
+        <span class="status-pill {sys_status_class}">{sys_status_text}</span>
+        <span class="status-pill pill-blue">AI READY</span>
+        <span class="status-pill pill-gray">{cam_status_text}</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+
+# Persistent WebRTC Component Mount (Single instance across application navigation)
+if st.session_state.get("camera_source") == "Browser Camera (WebRTC)":
+    try:
+        from streamlit_webrtc import webrtc_streamer, WebRtcMode
+        from app.services.webrtc_engine import WebRTCVideoProcessor, RTC_CONFIGURATION
+
+        with st.expander("📹 Global Camera Feed Transport (Persistent WebRTC Session)", expanded=False):
+            webrtc_ctx = webrtc_streamer(
+                key="global_webrtc_streamer",
+                mode=WebRtcMode.SENDRECV,
+                rtc_configuration=RTC_CONFIGURATION,
+                video_processor_factory=WebRTCVideoProcessor,
+                media_stream_constraints={"video": True, "audio": False},
+                async_processing=True,
+            )
+
+        if webrtc_ctx.video_processor:
+            proc = webrtc_ctx.video_processor
+            proc.danger_zone_enabled = st.session_state.danger_zone_enabled
+            proc.zones = list(st.session_state.safety_zones)
+            with proc.lock:
+                st.session_state.camera_running = True
+                st.session_state.metrics = proc.metrics
+                st.session_state.active_violations = proc.active_violations
+                st.session_state.fps = proc.fps
+                st.session_state.inference_fps = proc.inference_fps
+                if proc.session_events:
+                    st.session_state.session_events = list(proc.session_events)
+    except Exception as e:
+        st.error(f"WebRTC Engine Initialization: {e}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. Sidebar Navigation & Global Camera Control Center
 # ─────────────────────────────────────────────────────────────────────────────
 def nav_page(label: str, icon: str) -> bool:
     active = st.session_state.page == label
@@ -425,28 +386,15 @@ def nav_page(label: str, icon: str) -> bool:
 
 
 with st.sidebar:
-    # Brand
     st.markdown(
-        '<div class="site-title" style="padding:4px 12px 12px;">🏗️ SITE INTELLIGENCE</div>',
+        '<div class="panel-title" style="padding:4px 0 8px;">NAVIGATION</div>',
         unsafe_allow_html=True,
     )
-
-    st.markdown(
-        '<div style="padding:0 12px 16px; font-size:0.7rem; color:var(--text-muted); '
-        'letter-spacing:0.06em; text-transform:uppercase;">Vision-Driven Monitoring</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        '<div style="padding:0 12px 8px; font-size:0.65rem; color:var(--text-muted); '
-        'font-weight:600; letter-spacing:0.08em; text-transform:uppercase;">Navigation</div>',
-        unsafe_allow_html=True,
-    )
-
     nav_page("Dashboard", "📊")
     nav_page("Live Monitor", "📹")
-    nav_page("Assets", "🚜")
     nav_page("Safety", "🛡️")
+    nav_page("Safety Zones", "📍")
+    nav_page("Assets", "🚜")
     nav_page("Events", "📋")
     nav_page("Analytics", "📈")
     nav_page("AI Reports", "🤖")
@@ -454,12 +402,10 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Camera controls (always visible)
-    st.markdown(
-        '<div style="padding:0 12px 8px; font-size:0.65rem; font-weight:600; '
-        'color:var(--text-muted); letter-spacing:0.08em; text-transform:uppercase;">Camera Source</div>',
-        unsafe_allow_html=True,
-    )
+    # Global Camera Control Center
+    st.markdown('<div class="panel">', unsafe_allow_html=True)
+    st.markdown('<div class="panel-title">GLOBAL CAMERA CONTROL</div>', unsafe_allow_html=True)
+
     st.session_state.camera_source = st.selectbox(
         "Source",
         ["Browser Camera (WebRTC)", "Local Webcam / Demo Video"],
@@ -467,47 +413,48 @@ with st.sidebar:
         label_visibility="collapsed",
     )
 
-    if st.session_state.camera_source == "Local Webcam / Demo Video":
-        col_a, col_b = st.columns(2)
-        with col_a:
-            if st.button("Start", type="primary", use_container_width=True):
-                _start_camera()
-        with col_b:
-            if st.button("Stop", use_container_width=True):
-                _stop_camera()
+    if st.session_state.camera_running:
+        st.markdown('<span style="color:#10b981; font-size:0.8rem; font-weight:700;">● CAMERA LIVE</span>', unsafe_allow_html=True)
+        st.caption(f"Stream: WebRTC | AI: {st.session_state.fps:.1f} FPS")
+        if st.button("⏹ Stop Camera", key="btn_global_stop", use_container_width=True):
+            _stop_camera()
+            st.rerun()
     else:
-        st.caption("WebRTC active. Click START in live camera panel.")
+        st.markdown('<span style="color:#64748b; font-size:0.8rem; font-weight:700;">○ CAMERA OFFLINE</span>', unsafe_allow_html=True)
+        if st.session_state.camera_source == "Local Webcam / Demo Video":
+            if st.button("▶ Start Camera", key="btn_global_start", type="primary", use_container_width=True):
+                _start_camera()
+                st.rerun()
+        else:
+            st.caption("Click START in persistent WebRTC transport panel above to grant camera access.")
 
-    # Danger zone toggle
-    st.caption("Danger Zone")
+    # Zone monitoring master toggle
+    st.caption("Master Zone Monitoring")
     st.session_state.danger_zone_enabled = st.checkbox(
-        "Enable zone monitoring",
+        "Enable Zone Engine",
         value=st.session_state.danger_zone_enabled,
     )
+    st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.caption("Data Reset")
     confirm_clear = st.checkbox("Confirm data reset", value=False, key="chk_confirm_reset")
     if st.button("Clear All Data", use_container_width=True, disabled=not confirm_clear):
         _clear_data()
-        st.success("All data cleared!")
+        st.success("All database and session data cleared!")
         time.sleep(0.3)
         st.rerun()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Process One Frame (shared by all pages)
+# 6. Process One Frame (Local OpenCV Fallback)
 # ─────────────────────────────────────────────────────────────────────────────
 def process_frame() -> bool:
-    """
-    Process one camera frame. Call this once per rerun when camera is running.
-    Returns True if a frame was processed.
-    """
     if not st.session_state.camera_running:
         return False
 
     if st.session_state.get("camera_source") == "Browser Camera (WebRTC)":
-        return True  # WebRTC processor handles frame acquisition asynchronously
+        return True
 
     cam = st.session_state.cam
     det = st.session_state.det
@@ -522,7 +469,6 @@ def process_frame() -> bool:
 
     now = time.time()
 
-    # ── Frame delta ──────────────────────────────────────────────────────────
     if st.session_state.last_frame_time > 0:
         dt = now - st.session_state.last_frame_time
     else:
@@ -531,31 +477,22 @@ def process_frame() -> bool:
     raw_fps = 1.0 / dt if dt > 0 else 0.0
     st.session_state.fps = round(raw_fps, 1)
 
-    # ── Inference throttle ───────────────────────────────────────────────────
     elapsed = now - st.session_state._last_process_time
     min_interval = 1.0 / PROCESS_FPS
     if elapsed < min_interval:
-        return True  # Skip inference but count as "processing"
+        return True
 
     st.session_state._last_process_time = now
-    st.session_state.inference_fps = round(1.0 / max(elapsed, 0.001), 1)
-
     h, w = frame.shape[:2]
 
-    # ── Detection ────────────────────────────────────────────────────────────
     detections = det.detect(frame)
-
-    # ── Tracking ─────────────────────────────────────────────────────────────
     tracked = trk.update(detections, w, h)
-
-    # ── Activity Engine (equipment only) ─────────────────────────────────────
     update_activity(tracked, dt, w, h)
 
-    # ── Safety Engine ────────────────────────────────────────────────────────
     active_violations = 0
     if st.session_state.danger_zone_enabled:
         safety_events, active_violations = check_safety(
-            tracked, w, h, now
+            tracked, w, h, now, zones=st.session_state.safety_zones
         )
         if safety_events:
             flush_events(safety_events)
@@ -564,23 +501,24 @@ def process_frame() -> bool:
                 st.session_state.session_events = st.session_state.session_events[-200:]
     st.session_state.active_violations = active_violations
 
-    # ── Annotate Frame ─────────────────────────────────────────────��─────────
     ann = frame.copy()
 
-    # Safety zones
-    if st.session_state.danger_zone_enabled:
-        for zone in SAFETY_ZONES:
+    # Draw Safety Zones
+    if st.session_state.danger_zone_enabled and st.session_state.safety_zones:
+        for zone in st.session_state.safety_zones:
+            if not zone.get("enabled", True):
+                continue
             pts = np.array(
                 [[int(p[0] * w), int(p[1] * h)] for p in zone["polygon"]],
                 dtype=np.int32,
             )
-            bgr = zone["color_bgr"]
+            bgr = zone.get("color_bgr", (0, 0, 255))
             overlay = ann.copy()
             cv2.fillPoly(overlay, [pts], (int(bgr[0] * 0.3), int(bgr[1] * 0.3), int(bgr[2] * 0.3)))
             cv2.addWeighted(overlay, 0.35, ann, 0.65, 0, ann)
             cv2.polylines(ann, [pts], isClosed=True, color=bgr, thickness=2)
             cv2.putText(
-                ann, zone["name"].upper(),
+                ann, zone.get("name", "ZONE").upper(),
                 (pts[0][0] + 5, max(pts[0][1] - 6, 15)),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.45, bgr, 2,
             )
@@ -604,30 +542,15 @@ def process_frame() -> bool:
             cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 2,
         )
 
-    # FPS
-    cv2.putText(
-        ann,
-        f"FPS: {st.session_state.fps:.1f}",
-        (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2,
-    )
-
-    # Detected count
-    people = sum(1 for o in tracked if _is_person(o.class_name))
-    equip = sum(1 for o in tracked if _is_equipment(o.class_name))
-    cv2.putText(
-        ann,
-        f"People: {people} | Equipment: {equip}",
-        (10, h - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 2,
-    )
-
-    st.session_state.frame_buffer = ann
-
-    # ── Metrics ──────────────────────────────────────────────────────────────
+    # Metrics
     asset_s = get_asset_summary(tracked)
-    session_incidents = sum(1 for e in st.session_state.session_events if e.severity == "HIGH")
+    high_incidents = sum(
+        1 for e in st.session_state.session_events
+        if getattr(e, "severity", "") == "HIGH" or (isinstance(e, dict) and e.get("severity") == "HIGH")
+    )
     score, risk = calculate_safety_score(
         active_violations=active_violations,
-        session_incidents=session_incidents,
+        session_incidents=high_incidents,
     )
     people_count = sum(1 for o in tracked if _is_person(o.class_name))
 
@@ -639,224 +562,249 @@ def process_frame() -> bool:
         risk_level=risk,
     )
 
-    # ── AI Summary (throttled) ────────────────────────────────────────────────
-    if (
-        st.session_state.gemini_svc is not None
-        and (now - st.session_state.last_summary_time) > 15
-    ):
-        try:
-            data = {
-                "workers": people_count,
-                "safety_events": len(get_recent_events(100)),
-                "active_violations": active_violations,
-                "asset_utilisation": asset_s["avg_util"],
-                "risk": risk,
-                "safety_score": score,
-            }
-            st.session_state.ai_summary = st.session_state.gemini_svc.generate_summary(
-                data
-            )
-            st.session_state.last_summary_time = now
-        except Exception:
-            pass
-
+    st.session_state.frame_buffer = ann
     return True
 
 
-def _is_person(class_name: str) -> bool:
-    return class_name.lower() == "person"
-
-
-def _is_equipment(class_name: str) -> bool:
-    return class_name.lower() in EQUIPMENT_CLASSES
-
-
 # ─────────────────────────────────────────────────────────────────────────────
+# 7. UI Page Renderers
+# ─────────────────────────────────────────────────────────────────────────────
+
 # Page: Dashboard
-# ───────────────────────────────────────────────���─────────────────────────────
 def render_dashboard():
-    m = st.session_state.metrics
-    page_title("Dashboard", "Site overview — current conditions")
-
-    # KPI Cards
-    _kpis = st.columns(5)
-    with _kpis[0]:
-        _kpi_card("Workers", str(m.worker_count), "detected", "blue")
-    with _kpis[1]:
-        _kpi_card("Assets", str(m.asset_count), "equipment tracked", "purple")
-    with _kpis[2]:
-        _kpi_card("Utilisation", f"{m.avg_utilisation:.1f}%", "equipment activity", "green")
-    with _kpis[3]:
-        _kpi_card("Safety", str(m.safety_score), "out of 100", "amber")
-    with _kpis[4]:
-        risk_color = {"LOW": "green", "MODERATE": "amber", "HIGH": "red"}.get(m.risk_level, "gray")
-        _kpi_card("Risk", m.risk_level, "site risk level", risk_color)
-
-    st.markdown("<br/>", unsafe_allow_html=True)
-
-    # Camera preview + panels
-    cam_col, right = st.columns([2, 1])
-    with cam_col:
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("LIVE FEED")
-        _render_camera_feed()
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    with right:
-        # Recent events
-        st.markdown('<div class="panel" style="margin-bottom:10px;">', unsafe_allow_html=True)
-        st.caption("RECENT EVENTS")
-        events = get_recent_events(8)
-        if events:
-            for evt in events:
-                _render_event_row(evt)
-        else:
-            st.caption("No events detected yet.")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        # Safety
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("SAFETY STATUS")
-        _render_safety_status()
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # Asset summary
-    st.markdown("<br/>", unsafe_allow_html=True)
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.caption("ASSET ACTIVITY")
-    tracked = _get_tracked_from_session()
-    if tracked:
-        asset_sum = get_asset_summary(tracked)
-        if asset_sum["items"]:
-            for item in asset_sum["items"]:
-                status_badge = _status_badge(item["status"])
-                st.markdown(
-                    f"{status_badge} **{item['class']} #{item['id']:02d}** — "
-                    f"{item['status']} | Util: {item['util']:.1f}% | "
-                    f"Active: {item['active_s']:.0f}s / Idle: {item['idle_s']:.0f}s",
-                )
-        else:
-            st.caption("No equipment currently detected. Move equipment in front of camera.")
-    else:
-        st.caption("Camera not active. Start camera to track equipment.")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # AI Summary
-    st.markdown("<br/>", unsafe_allow_html=True)
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.caption("AI SITE SUMMARY")
-    st.write(st.session_state.ai_summary)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Page: Live Monitor
-# ─────────────────────────────────────────────────────────────────────────────
-def render_live_monitor():
-    page_title("Live Monitor", "Real-time computer vision feed")
-
-    # Controls row
-    ctrl = st.columns(4)
-    with ctrl[0]:
-        cam_state = "Connected" if st.session_state.camera_running else "Disconnected"
-        st.metric("Camera", cam_state, delta="Live" if st.session_state.camera_running else "Offline")
-    with ctrl[1]:
-        st.metric("FPS", f"{st.session_state.fps:.1f}")
-    with ctrl[2]:
-        st.metric("Inference", f"{st.session_state.inference_fps:.1f} FPS")
-    with ctrl[3]:
-        st.metric("Model", "YOLOv8n")
-
-    st.markdown("<br/>", unsafe_allow_html=True)
-    _render_camera_feed()
-
-    st.markdown("<br/>", unsafe_allow_html=True)
-    st.caption(
-        "Green boxes = normal | Red boxes = restricted zone | "
-        "Track IDs shown with class labels"
-    )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Page: Assets
-# ─────────────────────────────────────────────────────────────────────────────
-def render_assets():
-    page_title("Assets", "Equipment utilisation & activity intelligence")
-
-    if not st.session_state.camera_running:
-        _offline_prompt()
-        return
-
-    # Session-level assets
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.caption("SESSION TRACKS (LIVE)")
-    tracked = _get_tracked_from_session()
-    asset_sum = get_asset_summary(tracked)
-    if asset_sum["items"]:
-        _asset_table(asset_sum["items"])
-    else:
-        st.caption("No equipment currently detected. Show equipment to the camera.")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("<br/>", unsafe_allow_html=True)
-
-    # DB-persisted assets
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.caption("PERSISTED ASSETS (DATABASE)")
-    db_assets = get_all_asset_metrics()
-    if db_assets:
-        rows = []
-        for a in db_assets:
-            status = "ACTIVE" if a["active_seconds"] > a["idle_seconds"] else "IDLE"
-            total = a["active_seconds"] + a["idle_seconds"]
-            util = (a["active_seconds"] / total * 100) if total > 0 else 0.0
-            rows.append({
-                "Track ID": f"#{a['track_id']:02d}",
-                "Active": f"{a['active_seconds']:.1f}s",
-                "Idle": f"{a['idle_seconds']:.1f}s",
-                "Utilisation": f"{util:.1f}%",
-                "Status": status,
-            })
-        st.dataframe(rows, use_container_width=True, hide_index=True)
-    else:
-        st.caption("No asset data in database yet. Start camera to begin tracking.")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("<br/>", unsafe_allow_html=True)
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.caption("DETECTED CLASSES")
-    if tracked:
-        classes = {}
-        for o in tracked:
-            label = get_display_label(o.class_name)
-            classes[label] = classes.get(label, 0) + 1
-        for cls, count in classes.items():
-            st.write(f"**{cls}**: {count} track(s)")
-    else:
-        st.caption("No active tracks.")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Page: Safety
-# ─────────────────────────────────────────────────────────────────────────────
-def render_safety():
-    page_title("Safety", "Worker safety monitoring & zone management")
+    page_title("Dashboard", "Industrial operational overview & live conditions")
 
     m = st.session_state.metrics
     av = st.session_state.active_violations
 
-    # Risk banner
+    # KPI Cards
+    _kpis = st.columns(5)
+    with _kpis[0]:
+        _kpi_card("Workers Detected", str(m.worker_count), "on site", "blue")
+    with _kpis[1]:
+        _kpi_card("Assets Tracked", str(m.asset_count), "equipment items", "purple")
+    with _kpis[2]:
+        _kpi_card("Avg Utilisation", f"{m.avg_utilisation:.1f}%", "active equipment", "green")
+    with _kpis[3]:
+        _kpi_card("Safety Score", str(m.safety_score), "out of 100", "amber")
+    with _kpis[4]:
+        risk_color = {"LOW": "green", "MODERATE": "amber", "HIGH": "red"}.get(m.risk_level, "gray")
+        _kpi_card("Site Risk", m.risk_level, f"{av} active violations", risk_color)
+
+    st.markdown("<br/>", unsafe_allow_html=True)
+
+    cam_col, right = st.columns([2, 1])
+    with cam_col:
+        st.markdown('<div class="panel">', unsafe_allow_html=True)
+        st.caption("LIVE COMMAND SNAPSHOT")
+        _render_camera_feed()
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with right:
+        st.markdown('<div class="panel" style="margin-bottom:12px;">', unsafe_allow_html=True)
+        st.caption("RECENT SAFETY INCIDENTS")
+        events = get_recent_events(6)
+        if events:
+            for evt in events:
+                _render_event_row(evt)
+        else:
+            st.caption("No safety incidents recorded.")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        st.markdown('<div class="panel">', unsafe_allow_html=True)
+        st.caption("ACTIVE SAFETY CONDITIONS")
+        _render_safety_status()
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("<br/>", unsafe_allow_html=True)
+    st.markdown('<div class="panel">', unsafe_allow_html=True)
+    st.caption("OPERATIONAL ASSET SUMMARY")
+    tracked = _get_tracked_from_session()
+    if tracked:
+        asset_sum = get_asset_summary(tracked)
+        if asset_sum["items"]:
+            _asset_table(asset_sum["items"])
+        else:
+            st.caption("No equipment currently detected on camera field of view.")
+    else:
+        st.caption("Start camera to track operational assets.")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("<br/>", unsafe_allow_html=True)
+    st.markdown('<div class="panel">', unsafe_allow_html=True)
+    st.caption("AI EXECUTIVE SUMMARY")
+    st.write(st.session_state.ai_summary)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+# Page: Live Monitor (Hero Page)
+def render_live_monitor():
+    page_title("Live Monitor", "Hero Canvas — Real-Time Computer Vision Stream")
+
+    ctrl = st.columns(5)
+    with ctrl[0]:
+        cam_state = "LIVE" if st.session_state.camera_running else "OFFLINE"
+        st.metric("Camera Stream", cam_state)
+    with ctrl[1]:
+        st.metric("Stream FPS", f"{st.session_state.fps:.1f}")
+    with ctrl[2]:
+        st.metric("Inference", f"{st.session_state.inference_fps:.1f} FPS")
+    with ctrl[3]:
+        st.metric("Active Violations", str(st.session_state.active_violations))
+    with ctrl[4]:
+        st.metric("Detection Model", "YOLOv8n")
+
+    st.markdown("<br/>", unsafe_allow_html=True)
+
+    cam_col, command_panel = st.columns([2.5, 1])
+    with cam_col:
+        st.markdown('<div class="panel">', unsafe_allow_html=True)
+        st.caption("LIVE VISION CANVAS")
+        _render_camera_feed()
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with command_panel:
+        st.markdown('<div class="panel" style="margin-bottom:12px;">', unsafe_allow_html=True)
+        st.caption("SITE COMMAND METRICS")
+        m = st.session_state.metrics
+        st.write(f"• Workers Detected: **{m.worker_count}**")
+        st.write(f"• Equipment Tracked: **{m.asset_count}**")
+        st.write(f"• Active Violations: **{st.session_state.active_violations}**")
+        st.write(f"• Current Risk Level: **{m.risk_level}**")
+        st.write(f"• Safety Score: **{m.safety_score}/100**")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        st.markdown('<div class="panel">', unsafe_allow_html=True)
+        st.caption("LIVE INCIDENTS STREAM")
+        session_evts = st.session_state.session_events
+        if session_evts:
+            for evt in list(reversed(session_evts))[:8]:
+                if isinstance(evt, dict):
+                    _render_event_row(evt)
+                else:
+                    _render_event_row({
+                        "timestamp": "Live",
+                        "severity": getattr(evt, "severity", "LOW"),
+                        "message": getattr(evt, "message", "Event"),
+                        "track_id": getattr(evt, "track_id", None),
+                    })
+        else:
+            st.caption("No active incidents in current session.")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
+# Page: Safety Zones (NEW PAGE & VISUAL ZONE EDITOR)
+def render_safety_zones():
+    page_title("Safety Zones", "Multi-Zone Safety Management & Visual Polygon Editor")
+
+    zones = st.session_state.safety_zones
+
+    st.markdown('<div class="panel">', unsafe_allow_html=True)
+    st.caption("ACTIVE SAFETY ZONES OVERVIEW")
+    z_cols = st.columns(len(zones) if zones else 1)
+    for idx, z in enumerate(zones):
+        with z_cols[idx % len(z_cols)]:
+            status = "ACTIVE" if z.get("enabled", True) else "INACTIVE"
+            color_hex = z.get("color_hex", "#3b82f6")
+            st.markdown(f"""
+            <div style="background:var(--bg-secondary); border:1px solid var(--border); border-left:4px solid {color_hex}; border-radius:4px; padding:10px;">
+                <div style="font-weight:700; font-size:0.85rem;">{z.get('icon','📍')} {z['name']}</div>
+                <div style="font-size:0.7rem; color:var(--text-muted); margin-top:2px;">Severity: <strong>{z['severity']}</strong> | Status: <strong>{status}</strong></div>
+            </div>
+            """, unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("<br/>", unsafe_allow_html=True)
+
+    col_editor, col_preview = st.columns([1.2, 1.8])
+
+    with col_editor:
+        st.markdown('<div class="panel">', unsafe_allow_html=True)
+        st.caption("VISUAL POLYGON ZONE EDITOR")
+
+        zone_names = [z["name"] for z in zones]
+        selected_name = st.selectbox("Select Zone to Edit", zone_names, index=0 if zone_names else 0)
+
+        # Find target zone
+        target_zone = next((z for z in zones if z["name"] == selected_name), zones[0] if zones else None)
+
+        if target_zone:
+            st.session_state.editing_zone_id = target_zone["id"]
+            z_enabled = st.checkbox("Enable Zone Monitoring", value=target_zone.get("enabled", True), key=f"chk_en_{target_zone['id']}")
+            target_zone["enabled"] = z_enabled
+
+            st.caption("Normalized Polygon Vertices (0.00 – 1.00):")
+            poly = target_zone.get("polygon", [(0.1, 0.1), (0.5, 0.1), (0.5, 0.5), (0.1, 0.5)])
+
+            # Edit 4 vertices
+            v1_x = st.slider("Vertex 1 X", 0.0, 1.0, float(poly[0][0]), 0.02, key=f"v1x_{target_zone['id']}")
+            v1_y = st.slider("Vertex 1 Y", 0.0, 1.0, float(poly[0][1]), 0.02, key=f"v1y_{target_zone['id']}")
+
+            v2_x = st.slider("Vertex 2 X", 0.0, 1.0, float(poly[1][0]), 0.02, key=f"v2x_{target_zone['id']}")
+            v2_y = st.slider("Vertex 2 Y", 0.0, 1.0, float(poly[1][1]), 0.02, key=f"v2y_{target_zone['id']}")
+
+            v3_x = st.slider("Vertex 3 X", 0.0, 1.0, float(poly[2][0]), 0.02, key=f"v3x_{target_zone['id']}")
+            v3_y = st.slider("Vertex 3 Y", 0.0, 1.0, float(poly[2][1]), 0.02, key=f"v3y_{target_zone['id']}")
+
+            v4_x = st.slider("Vertex 4 X", 0.0, 1.0, float(poly[3][0]), 0.02, key=f"v4x_{target_zone['id']}")
+            v4_y = st.slider("Vertex 4 Y", 0.0, 1.0, float(poly[3][1]), 0.02, key=f"v4y_{target_zone['id']}")
+
+            target_zone["polygon"] = [(v1_x, v1_y), (v2_x, v2_y), (v3_x, v3_y), (v4_x, v4_y)]
+
+            st.success(f"Updated polygon boundaries for {target_zone['name']}")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with col_preview:
+        st.markdown('<div class="panel">', unsafe_allow_html=True)
+        st.caption("LIVE ZONE BOUNDARY PREVIEW CANVAS")
+        buf = st.session_state.frame_buffer
+        if buf is not None:
+            preview_img = buf.copy()
+        else:
+            preview_img = np.zeros((480, 640, 3), dtype=np.uint8) + 20
+
+        # Draw all safety zones on preview
+        h, w = preview_img.shape[:2]
+        for z in zones:
+            if not z.get("enabled", True):
+                continue
+            pts = np.array([[int(p[0] * w), int(p[1] * h)] for p in z["polygon"]], dtype=np.int32)
+            bgr = z.get("color_bgr", (0, 0, 255))
+            overlay = preview_img.copy()
+            cv2.fillPoly(overlay, [pts], (int(bgr[0] * 0.3), int(bgr[1] * 0.3), int(bgr[2] * 0.3)))
+            cv2.addWeighted(overlay, 0.4, preview_img, 0.6, 0, preview_img)
+            thickness = 4 if target_zone and z["id"] == target_zone["id"] else 2
+            cv2.polylines(preview_img, [pts], isClosed=True, color=bgr, thickness=thickness)
+            cv2.putText(
+                preview_img, z["name"].upper(),
+                (pts[0][0] + 5, max(pts[0][1] - 8, 15)),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, bgr, 2,
+            )
+
+        rgb_preview = cv2.cvtColor(preview_img, cv2.COLOR_BGR2RGB)
+        st.image(rgb_preview, use_container_width=True, channels="RGB")
+        st.caption("The exact normalized polygon coordinates shown above are evaluated by the Safety Engine in real time.")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
+# Page: Safety
+def render_safety():
+    page_title("Safety", "Worker Safety Intelligence & Penalty Model")
+
+    m = st.session_state.metrics
+    av = st.session_state.active_violations
+
     risk_info = {
-        "LOW": ("Low risk — normal operations", "green"),
-        "MODERATE": ("Moderate risk — monitor closely", "amber"),
-        "HIGH": ("High risk — immediate attention required", "red"),
+        "LOW": ("Low risk — normal site operations", "green"),
+        "MODERATE": ("Moderate risk — active caution required", "amber"),
+        "HIGH": ("High risk — immediate safety attention required", "red"),
     }
     risk_text, risk_color = risk_info.get(m.risk_level, ("Unknown", "gray"))
 
     st.markdown(f"""
-    <div class="panel" style="border-left: 3px solid var(--accent-{risk_color});">
-        <div class="panel-title">RISK LEVEL: {m.risk_level}</div>
+    <div class="panel" style="border-left: 4px solid var(--accent-{risk_color});">
+        <div class="panel-title">CURRENT SITE RISK LEVEL: {m.risk_level}</div>
         <p style="color: var(--text-secondary); margin: 0;">{risk_text}</p>
     </div>
     """, unsafe_allow_html=True)
@@ -865,15 +813,15 @@ def render_safety():
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        _kpi_card("Safety Score", str(m.safety_score), "0–100", "amber")
+        _kpi_card("Safety Score", str(m.safety_score), "0–100 score", "amber")
     with c2:
-        _kpi_card("Workers", str(m.worker_count), "detected", "blue")
+        _kpi_card("Workers Detected", str(m.worker_count), "on site", "blue")
     with c3:
         zone_status = "VIOLATION" if av > 0 else "Clear"
         zone_color = "red" if av > 0 else "green"
-        _kpi_card("Zone Status", zone_status, "restricted area", zone_color)
+        _kpi_card("Zone Status", zone_status, "zone monitor", zone_color)
     with c4:
-        _kpi_card("Zone Violators", str(av), "active", "red")
+        _kpi_card("Active Violators", str(av), "in zones", "red")
 
     st.markdown("<br/>", unsafe_allow_html=True)
 
@@ -881,108 +829,88 @@ def render_safety():
     with col_a:
         st.markdown('<div class="panel">', unsafe_allow_html=True)
         st.caption("CONFIGURED SAFETY ZONES")
-        for z in SAFETY_ZONES:
+        for z in st.session_state.safety_zones:
+            status_text = "ENABLED" if z.get("enabled", True) else "DISABLED"
             st.markdown(
                 f"<div style='margin-bottom:8px;'>{z['icon']} <strong>{z['name']}</strong> — "
-                f"<span style='color:{z['color_hex']}; font-weight:600;'>{z['severity']} RISK</span></div>",
+                f"<span style='color:{z['color_hex']}; font-weight:600;'>{z['severity']} RISK ({status_text})</span></div>",
                 unsafe_allow_html=True,
             )
         st.markdown("</div>", unsafe_allow_html=True)
 
     with col_b:
         st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("SCORING MODEL")
-        st.caption(
-            "Score starts at 100. "
-            "Danger zone entry: -20. "
-            "PPE violations: -15 (helmet), -10 (vest). "
-            "Repeated violations: -5 each. "
-            "Score resets to 100 when no violations are active."
-        )
-        st.caption(f"Penalty reference: zone={20}, helmet={15}, vest={10}, repeat={5}")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    if st.session_state.camera_running:
-        st.markdown("<br/>", unsafe_allow_html=True)
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("SAFETY EVENTS")
-        events = get_recent_events(15)
-        if events:
-            for evt in events:
-                _render_event_row(evt)
-        else:
-            st.caption("No safety events recorded.")
+        st.caption("SAFETY SCORING & PPE MODEL")
+        st.write("• Base Score: **100**")
+        st.write("• Safety Zone Entry Penalty: **-20**")
+        st.write("• Repeated Zone Violation Penalty: **-5**")
+        st.markdown("---")
+        st.caption("PPE DETECTION MODEL STATUS")
+        st.markdown('<span class="badge badge-amber">PPE DETECTION: Not configured</span>', unsafe_allow_html=True)
+        st.caption("Standard YOLOv8n COCO model detects person bounding boxes. Construction PPE compliance requires custom fine-tuned model weights.")
         st.markdown("</div>", unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# Page: Assets
+def render_assets():
+    page_title("Assets", "Equipment Utilisation & Motion Tracking")
+
+    tracked = _get_tracked_from_session()
+    asset_s = get_asset_summary(tracked)
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        _kpi_card("Tracked Equipment", str(asset_s["count"]), "items", "purple")
+    with c2:
+        _kpi_card("Active Equipment", str(asset_s["active"]), "in motion", "green")
+    with c3:
+        _kpi_card("Idle Equipment", str(asset_s["idle"]), "stationary", "amber")
+    with c4:
+        _kpi_card("Avg Utilisation", f"{asset_s['avg_util']:.1f}%", "overall site", "blue")
+
+    st.markdown("<br/>", unsafe_allow_html=True)
+    st.markdown('<div class="panel">', unsafe_allow_html=True)
+    st.caption("DETECTED ASSETS (COCO PROXY CLASSES)")
+    if asset_s["items"]:
+        _asset_table(asset_s["items"])
+    else:
+        st.caption("No equipment currently detected. Move vehicles or equipment proxies in front of camera.")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 # Page: Events
-# ────────────────────────────────────────────────────────���────────────────────
 def render_events():
-    page_title("Events", "Chronological safety & activity log")
+    page_title("Events", "Chronological Safety & Operational Activity Log")
 
-    # Filters
     f1, f2, f3, f4 = st.columns(4)
     with f1:
-        severity_filter = st.selectbox(
-            "Severity", ["All", "HIGH", "MEDIUM", "LOW"], index=0,
-        )
+        severity_filter = st.selectbox("Severity", ["All", "HIGH", "MEDIUM", "LOW"], index=0)
     with f2:
-        type_filter = st.selectbox(
-            "Type",
-            ["All", "danger_zone_entry", "danger_zone_sustained", "danger_zone_cleared", "other"],
-            index=0,
-        )
+        type_filter = st.selectbox("Event Category", ["All", "Zone Entry", "Zone Sustained", "Zone Cleared"], index=0)
     with f3:
-        search = st.text_input("Search", placeholder="Search messages...")
+        search = st.text_input("Search", placeholder="Filter by message...")
     with f4:
-        limit = st.slider("Show", 10, 100, 30, 10)
+        limit = st.slider("Records", 10, 100, 30, 10)
 
     events = get_recent_events(limit)
 
-    # Apply filters
     if severity_filter != "All":
         events = [e for e in events if e.get("severity") == severity_filter]
-    if type_filter != "All":
-        if type_filter == "other":
-            events = [e for e in events if not e.get("event_type", "").startswith("danger_zone")]
-        else:
-            events = [e for e in events if e.get("event_type") == type_filter]
     if search:
         events = [e for e in events if search.lower() in (e.get("message", "") or "").lower()]
-
-    # Session events (not yet DB-persisted)
-    if st.session_state.session_events:
-        db_ids = {e["id"] for e in events if "id" in e}
-        for evt in st.session_state.session_events:
-            events.insert(0, {
-                "timestamp": "Current session",
-                "event_type": evt.event_type,
-                "severity": evt.severity,
-                "track_id": evt.track_id,
-                "message": evt.message,
-            })
 
     st.markdown('<div class="panel">', unsafe_allow_html=True)
     if events:
         for evt in events[:limit]:
             _render_event_row(evt)
     else:
-        st.caption("No events match the current filters.")
+        st.caption("No historical events match current filter.")
     st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("<br/>", unsafe_allow_html=True)
-    st.caption(
-        "Event lifecycle: ENTRY → (SUSTAINED, every 5s) → CLEARED. "
-        "Identical entry events are deduplicated via per-track cooldown."
-    )
 
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Page: Analytics
-# ─────────────────────────────────────────────────────────────────────────────
 def render_analytics():
-    page_title("Analytics", "Operational intelligence & trends")
+    page_title("Analytics", "Operational Intelligence & Metrics Trends")
 
     m = st.session_state.metrics
     session_events = st.session_state.session_events
@@ -991,26 +919,23 @@ def render_analytics():
         if (isinstance(e, dict) and e.get("severity") == "HIGH") or (hasattr(e, "severity") and e.severity == "HIGH")
     )
 
-    # Current Session KPIs
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        _kpi_card("Avg Utilisation", f"{m.avg_utilisation:.1f}%", "all equipment", "green")
+        _kpi_card("Avg Utilisation", f"{m.avg_utilisation:.1f}%", "active session", "green")
     with c2:
         _kpi_card("Session Events", str(len(session_events)), "active session", "blue")
     with c3:
         _kpi_card("High-Risk Events", str(high_risk_session), "active session", "red")
     with c4:
-        _kpi_card("Workers", str(m.worker_count), "detected", "purple")
+        _kpi_card("Workers Detected", str(m.worker_count), "active session", "purple")
 
     st.markdown("<br/>", unsafe_allow_html=True)
 
     tracked = _get_tracked_from_session()
-
-    # Activity breakdown
     col_a, col_b = st.columns(2)
     with col_a:
         st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("ACTIVE vs IDLE (SESSION)")
+        st.caption("ACTIVE vs IDLE TIME (SESSION)")
         _render_active_idle_chart(tracked)
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -1021,8 +946,6 @@ def render_analytics():
         st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<br/>", unsafe_allow_html=True)
-
-    # Event distribution
     st.markdown('<div class="panel">', unsafe_allow_html=True)
     st.caption("EVENT SEVERITY DISTRIBUTION (SESSION)")
     event_dicts = []
@@ -1034,75 +957,35 @@ def render_analytics():
     _render_event_chart(event_dicts)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Safety score gauge
-    st.markdown("<br/>", unsafe_allow_html=True)
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.caption("SAFETY SCORE")
-    _render_safety_gauge(m.safety_score, m.risk_level)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # Persisted Historical Analytics Panel
     st.markdown("<br/>", unsafe_allow_html=True)
     st.markdown('<div class="panel">', unsafe_allow_html=True)
     st.caption("PERSISTED HISTORICAL ANALYTICS (DATABASE)")
     db_events = get_recent_events(100)
-    st.write(f"- Total Historical Events Logged: {len(db_events)}")
-    st.write(f"- High-Risk Historical Events: {sum(1 for e in db_events if e.get('severity') == 'HIGH')}")
+    st.write(f"• Total Historical Database Events Logged: **{len(db_events)}**")
+    st.write(f"• High-Risk Historical Events: **{sum(1 for e in db_events if e.get('severity') == 'HIGH')}**")
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Page: AI Reports
-# ─────────────────────────────────────────────────────────────────────────────
 def render_ai_reports():
-    page_title("AI Reports", "Management-level site intelligence")
+    page_title("AI Reports", "Executive Site Intelligence & Automated Summaries")
 
-    if st.button("Generate Report", type="primary"):
+    if st.button("🤖 Generate AI Executive Report", type="primary"):
         _generate_report()
 
     st.markdown("<br/>", unsafe_allow_html=True)
     st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.caption("LATEST REPORT")
+    st.caption("LATEST EXECUTIVE REPORT")
     st.write(st.session_state.ai_summary)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("<br/>", unsafe_allow_html=True)
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.caption("HOW IT WORKS")
-    st.caption(
-        "The CV system extracts structured metrics (worker count, active violations, "
-        "equipment utilisation, event counts). These are sent to Gemini AI, which "
-        "generates a management-level site summary. "
-        "If Gemini is unavailable, a rule-based fallback is used automatically."
-    )
-    status = "Active" if st.session_state.gemini_svc else "Not configured"
-    status_badge = _status_badge(status.lower())
-    st.caption(f"Gemini status: {status_badge}")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # Raw metrics reference
-    st.markdown("<br/>", unsafe_allow_html=True)
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.caption("RAW METRICS (SENT TO AI)")
-    m = st.session_state.metrics
-    st.write(
-        f"- Workers: {m.worker_count}\n"
-        f"- Assets: {m.asset_count}\n"
-        f"- Utilisation: {m.avg_utilisation:.1f}%\n"
-        f"- Safety Score: {m.safety_score}\n"
-        f"- Risk Level: {m.risk_level}\n"
-        f"- Active Violations: {st.session_state.active_violations}\n"
-        f"- Session Events: {len(st.session_state.session_events)}"
-    )
     st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _generate_report():
-    with st.spinner("Generating report..."):
+    with st.spinner("Analyzing site telematics and safety logs with Gemini..."):
         try:
             svc = st.session_state.gemini_svc
             if svc is None:
-                api_key = os.environ.get("GEMINI_API_KEY", "")
+                api_key = _get_gemini_api_key()
                 if api_key and len(api_key) > 10:
                     svc = GeminiService(api_key)
                     st.session_state.gemini_svc = svc
@@ -1120,135 +1003,80 @@ def _generate_report():
             if svc:
                 st.session_state.ai_summary = svc.generate_summary(data)
                 st.session_state.last_summary_time = time.time()
-                st.success("Report generated")
+                st.success("Executive report generated via Gemini AI.")
             else:
-                # Fallback
                 st.session_state.ai_summary = _manual_fallback(data)
-                st.success("Report generated (fallback)")
+                st.success("Executive report generated (Deterministic Fallback Engine).")
         except Exception as e:
-            st.error(f"Report generation failed: {e}")
+            st.error(f"Report generation error: {e}")
 
 
 def _manual_fallback(data: dict) -> str:
     parts = []
     if data["active_violations"] > 0:
-        parts.append(
-            f"{data['active_violations']} worker(s) currently in the restricted zone. "
-            "Immediate attention required."
-        )
+        parts.append(f"CRITICAL: {data['active_violations']} worker(s) currently detected inside active Safety Zones. Immediate site supervisor attention required.")
     else:
-        parts.append("No active zone violations. Site is currently clear.")
+        parts.append("Site safety conditions are currently clear with zero active zone violations.")
 
-    parts.append(f"Asset utilisation at {data['asset_utilisation']:.1f}%.")
-    parts.append(f"Safety score: {data['safety_score']}/100 ({data['risk']} risk).")
-    parts.append(
-        "Recommended action: Continue monitoring zone boundaries and PPE compliance."
-    )
+    parts.append(f"Equipment utilisation is recorded at {data['asset_utilisation']:.1f}%.")
+    parts.append(f"Overall site safety score is {data['safety_score']}/100 ({data['risk']} risk).")
+    parts.append("Recommended supervisor action: Enforce safety zone perimeter boundaries and monitor stationary equipment.")
     return " ".join(parts)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Page: Settings
-# ─────────────────────────────────────────────────────────────────────────────
 def render_settings():
-    page_title("Settings", "System configuration & status")
+    page_title("Settings", "System Configuration & Diagnostic Telemetry")
 
     col_a, col_b = st.columns(2)
-
     with col_a:
         st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("DETECTION")
-        new_conf = st.slider(
-            "Confidence Threshold", 0.1, 0.9,
-            float(st.session_state.confidence_threshold), 0.05,
-        )
-        new_idle = st.slider(
-            "Idle Threshold (seconds)", 1.0, 10.0,
-            float(st.session_state.idle_threshold), 0.5,
-        )
+        st.caption("DETECTION ENGINE TUNING")
+        new_conf = st.slider("YOLO Confidence Threshold", 0.1, 0.9, float(st.session_state.confidence_threshold), 0.05)
+        new_idle = st.slider("Asset Idle Threshold (seconds)", 1.0, 10.0, float(st.session_state.idle_threshold), 0.5)
         st.session_state.confidence_threshold = new_conf
         st.session_state.idle_threshold = new_idle
         st.markdown("</div>", unsafe_allow_html=True)
 
     with col_b:
         st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("SYSTEM STATUS")
+        st.caption("SYSTEM DIAGNOSTICS")
 
-        # Camera
         cam_status = "Connected" if st.session_state.camera_running else "Disconnected"
-        st.markdown(f"Camera: {_status_badge(cam_status)}", unsafe_allow_html=True)
+        st.markdown(f"Camera Stream: {_status_badge(cam_status)}", unsafe_allow_html=True)
+        st.markdown(f"YOLO Model: {_status_badge('YOLOv8n')}", unsafe_allow_html=True)
 
-        # Model
-        st.markdown(f"Model: {_status_badge('YOLOv8n')}", unsafe_allow_html=True)
-
-        # Gemini
         api_key = _get_gemini_api_key()
         gemini_on = bool(api_key and len(api_key) > 10 and "your_gemini" not in api_key.lower())
         gemini_status = "Configured" if gemini_on else "Not configured"
         st.markdown(f"Gemini AI: {_status_badge(gemini_status)}", unsafe_allow_html=True)
 
-        # DB
-        import os as _os
-        db_exists = _os.path.exists("data/site.db")
+        db_exists = os.path.exists("data/site.db")
         db_status = "Active" if db_exists else "Not initialized"
-        st.markdown(f"Database: {_status_badge(db_status)}", unsafe_allow_html=True)
-
+        st.markdown(f"SQLite DB: {_status_badge(db_status)}", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("<br/>", unsafe_allow_html=True)
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.caption("SAFETY ZONES CONFIGURATION")
-    for z in SAFETY_ZONES:
-        st.markdown(
-            f"{z['icon']} **{z['name']}** (<span style='color:{z['color_hex']}; font-weight:600;'>{z['severity']} RISK</span>)",
-            unsafe_allow_html=True,
-        )
-        for i, pt in enumerate(z['polygon']):
-            st.write(f"  • Vertex {i+1}: ({pt[0]:.2f}, {pt[1]:.2f})")
-        st.markdown("<br/>", unsafe_allow_html=True)
-
-    st.caption("Equipment classes detected:")
-    st.write(", ".join(c.title() for c in sorted(EQUIPMENT_CLASSES)))
-
-    st.caption("Scoring penalties:")
-    st.write(f"Danger zone: -{PENALTY_DANGER_ZONE} | Helmet: -{PENALTY_NO_HELMET} | "
-             f"Vest: -{PENALTY_NO_VEST} | Repeated: -{PENALTY_REPEATED_VIOLATION}")
-    st.markdown("</div>", unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Shared UI Components
+# 8. Shared Visual & UI Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 def page_title(title: str, subtitle: str):
     st.markdown(f"""
-    <div class="site-header">
-        <div class="site-header-left">
-            <div>
-                <div class="site-title">{title}</div>
-                <div class="site-subtitle">{subtitle}</div>
-            </div>
-        </div>
-        <div>
-            {"<span class='live-indicator live-online'><span class='live-dot'></span> LIVE</span>"
-             if st.session_state.camera_running else
-             "<span class='live-indicator live-offline'><span class='live-dot'></span> OFFLINE</span>"}
-        </div>
+    <div style="margin-bottom:12px;">
+        <div style="font-size:1.3rem; font-weight:800; color:var(--text-primary); letter-spacing:0.04em;">{title}</div>
+        <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em;">{subtitle}</div>
     </div>
     """, unsafe_allow_html=True)
 
 
 def _kpi_card(label: str, value: str, sub: str, color: str = "blue"):
-    color_map = {
-        "blue": "var(--accent-blue)",
-        "green": "var(--accent-green)",
-        "amber": "var(--accent-amber)",
-        "red": "var(--accent-red)",
-        "purple": "var(--accent-purple)",
-        "gray": "var(--text-muted)",
+    colors = {
+        "blue": "#3b82f6", "green": "#10b981", "amber": "#f59e0b",
+        "red": "#ef4444", "purple": "#8b5cf6", "gray": "#64748b",
     }
-    accent = color_map.get(color, "var(--accent-blue)")
+    accent = colors.get(color, "#3b82f6")
     st.markdown(f"""
-    <div class="metric-card" style="border-top: 2px solid {accent};">
+    <div class="metric-card" style="border-top: 3px solid {accent};">
         <div class="metric-label">{label}</div>
         <div class="metric-value">{value}</div>
         <div class="metric-sub">{sub}</div>
@@ -1258,45 +1086,19 @@ def _kpi_card(label: str, value: str, sub: str, color: str = "blue"):
 
 def _render_camera_feed():
     if st.session_state.get("camera_source") == "Browser Camera (WebRTC)":
-        try:
-            from streamlit_webrtc import webrtc_streamer, WebRtcMode
-            from app.services.webrtc_engine import WebRTCVideoProcessor, RTC_CONFIGURATION
-
-            webrtc_ctx = webrtc_streamer(
-                key="browser-camera-feed",
-                mode=WebRtcMode.SENDRECV,
-                rtc_configuration=RTC_CONFIGURATION,
-                video_processor_factory=WebRTCVideoProcessor,
-                media_stream_constraints={"video": True, "audio": False},
-                async_processing=True,
-            )
-
-            if webrtc_ctx.video_processor:
-                proc = webrtc_ctx.video_processor
-                proc.danger_zone_enabled = st.session_state.danger_zone_enabled
-                with proc.lock:
-                    st.session_state.camera_running = True
-                    st.session_state.metrics = proc.metrics
-                    st.session_state.active_violations = proc.active_violations
-                    st.session_state.fps = proc.fps
-                    st.session_state.inference_fps = proc.inference_fps
-                    if proc.session_events:
-                        st.session_state.session_events = list(proc.session_events)
-            else:
-                st.info("📹 Click **START** above to grant browser camera access.")
-        except Exception as e:
-            st.error(f"WebRTC Error: {e}")
-            buf = st.session_state.frame_buffer
-            if buf is not None:
-                rgb = cv2.cvtColor(buf, cv2.COLOR_BGR2RGB)
-                st.image(rgb, use_container_width=True, channels="RGB")
+        buf = st.session_state.frame_buffer
+        if buf is not None:
+            rgb = cv2.cvtColor(buf, cv2.COLOR_BGR2RGB)
+            st.image(rgb, channels="RGB")
+        else:
+            st.info("📹 Camera initializing... Click **START** in persistent transport panel above if camera permission is requested.")
     else:
         buf = st.session_state.frame_buffer
         if buf is not None:
             rgb = cv2.cvtColor(buf, cv2.COLOR_BGR2RGB)
-            st.image(rgb, use_container_width=True, channels="RGB")
+            st.image(rgb, channels="RGB")
         else:
-            st.caption("Waiting for camera feed...")
+            _offline_prompt()
 
     st.markdown(
         '<div style="font-size:0.7rem; color:var(--text-muted); margin-top:8px;">'
@@ -1357,14 +1159,14 @@ def _asset_table(items):
     rows = []
     for item in items:
         rows.append({
-            "ID": f"#{item['id']:02d}",
-            "Class": item["class"],
+            "Track ID": f"#{item['id']:02d}",
+            "Detected Class": item["class"],
             "Status": item["status"],
-            "Active": f"{item['active_s']:.1f}s",
-            "Idle": f"{item['idle_s']:.1f}s",
+            "Active Time": f"{item['active_s']:.1f}s",
+            "Idle Time": f"{item['idle_s']:.1f}s",
             "Utilisation": f"{item['util']:.1f}%",
         })
-    st.dataframe(rows, use_container_width=True, hide_index=True)
+    st.dataframe(rows, hide_index=True)
 
 
 def _get_tracked_from_session():
@@ -1389,19 +1191,19 @@ def _render_active_idle_chart(tracked):
             y=[active_vals, idle_vals],
             barmode="stack",
             labels={"x": "Asset", "y": "Seconds"},
-            color_discrete_sequence=["#10b981", "#6b7280"],
+            color_discrete_sequence=["#10b981", "#64748b"],
         )
         fig.update_layout(
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            font_color="#9aa0a8",
+            font_color="#a0aec0",
             height=280,
             margin=dict(l=10, r=10, t=10, b=10),
             legend=dict(orientation="h", y=-0.15),
         )
-        fig.update_xaxes(gridcolor="#2a3342")
-        fig.update_yaxes(gridcolor="#2a3342")
-        st.plotly_chart(fig, use_container_width=True)
+        fig.update_xaxes(gridcolor="#253040")
+        fig.update_yaxes(gridcolor="#253040")
+        st.plotly_chart(fig)
     except ImportError:
         st.caption("Install plotly for charts.")
 
@@ -1431,14 +1233,14 @@ def _render_util_chart(tracked):
         fig.update_layout(
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            font_color="#9aa0a8",
+            font_color="#a0aec0",
             height=280,
             margin=dict(l=10, r=10, t=10, b=10),
             showlegend=False,
         )
-        fig.update_xaxes(gridcolor="#2a3342")
-        fig.update_yaxes(gridcolor="#2a3342", range=[0, 100])
-        st.plotly_chart(fig, use_container_width=True)
+        fig.update_xaxes(gridcolor="#253040")
+        fig.update_yaxes(gridcolor="#253040", range=[0, 100])
+        st.plotly_chart(fig)
     except ImportError:
         st.caption("Install plotly for charts.")
 
@@ -1467,54 +1269,15 @@ def _render_event_chart(events):
         )
         fig.update_layout(
             paper_bgcolor="rgba(0,0,0,0)",
-            font_color="#9aa0a8",
+            font_color="#a0aec0",
             height=260,
             margin=dict(l=10, r=10, t=10, b=10),
             showlegend=True,
             legend=dict(orientation="h", y=-0.1),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig)
     except ImportError:
         st.caption("Install plotly for charts.")
-
-
-def _render_safety_gauge(score: int, risk: str):
-    try:
-        import plotly.graph_objects as go
-        fig = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=score,
-            domain={"x": [0, 1], "y": [0, 1]},
-            title={"text": f"Risk: {risk}", "font": {"size": 14, "color": "#9aa0a8"}},
-            number={"font": {"size": 48, "color": "#e8eaed"}},
-            gauge={
-                "axis": {"range": [0, 100], "tickcolor": "#3a4558", "tickfont": {"color": "#9aa0a8"}},
-                "bar": {"color": _gauge_color(score)},
-                "bgcolor": "#1e2432",
-                "borderwidth": 0,
-                "steps": [
-                    {"range": [0, 70], "color": "rgba(239,68,68,0.15)"},
-                    {"range": [70, 90], "color": "rgba(245,158,11,0.15)"},
-                    {"range": [90, 100], "color": "rgba(16,185,129,0.15)"},
-                ],
-            },
-        ))
-        fig.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            margin=dict(l=20, r=20, t=20, b=20),
-            height=200,
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    except ImportError:
-        st.caption("Install plotly for charts.")
-
-
-def _gauge_color(score: int) -> str:
-    if score >= 90:
-        return "#10b981"
-    if score >= 70:
-        return "#f59e0b"
-    return "#ef4444"
 
 
 def _offline_prompt():
@@ -1523,16 +1286,15 @@ def _offline_prompt():
         <div style="font-size:3rem; margin-bottom:12px;">📹</div>
         <div style="font-size:1.1rem; font-weight:600; margin-bottom:8px;">Camera Offline</div>
         <div style="color:var(--text-muted); font-size:0.9rem;">
-            Click <strong>Start</strong> in the sidebar to begin live monitoring.
+            Click <strong>Start Camera</strong> in the sidebar to begin live monitoring.
         </div>
     </div>
     """, unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Router
+# 9. Application Router
 # ─────────────────────────────────────────────────────────────────────────────
-# Process frame first so all pages see fresh data
 process_frame()
 
 page = st.session_state.page
@@ -1541,10 +1303,12 @@ if page == "Dashboard":
     render_dashboard()
 elif page == "Live Monitor":
     render_live_monitor()
-elif page == "Assets":
-    render_assets()
 elif page == "Safety":
     render_safety()
+elif page == "Safety Zones":
+    render_safety_zones()
+elif page == "Assets":
+    render_assets()
 elif page == "Events":
     render_events()
 elif page == "Analytics":
@@ -1556,7 +1320,6 @@ elif page == "Settings":
 else:
     render_dashboard()
 
-# Auto-refresh when camera is running
 if st.session_state.camera_running:
     time.sleep(0.08)
     st.rerun()

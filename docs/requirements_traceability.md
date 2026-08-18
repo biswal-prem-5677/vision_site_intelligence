@@ -1,66 +1,20 @@
 # Requirements Traceability Matrix
 
-## Hackathon Problem Statement & Solution Mapping
-
-This document explicitly maps the core hackathon problem statements to the verified software MVP features implemented in the **Vision-Driven Site Intelligence** platform.
+This document maps user problem statements, hackathon constraints, and operational goals directly to codebase implementations.
 
 ---
 
-### Problem 1: Heavy Asset Idle Time & Schedule/Cost Risk
-> *"Large sites manage hundreds of heavy assets; idle time adds cost and schedule risk."*
+## Traceability Mapping
 
-- **Feature Implementation**: Visual Asset Activity + Utilisation Tracking (`app/services/activity_engine.py`)
-- **How It Works**:
-  - Automatically filters detections to equipment proxy classes (`car`, `truck`, `bus`, `motorcycle`, `bicycle`).
-  - Computes Euclidean movement per track ID across frames to classify state as **ACTIVE** or **IDLE**.
-  - Calculates real-time asset utilisation percentage: $\text{Utilisation} = \frac{\text{Active Time}}{\text{Active Time} + \text{Idle Time}} \times 100\%$.
-  - Displays asset-by-asset status, active seconds, idle seconds, and utilisation on both the Executive Dashboard and dedicated **Assets** control page.
-- **Traceability**: `app/services/activity_engine.py` $\rightarrow$ `app/database.py:upsert_asset_metrics` $\rightarrow$ `app.py:render_assets()`
-
----
-
-### Problem 2: Worker Safety Incidents & Human Error
-> *"Worker safety incidents and human-error remain prevalent despite existing controls."*
-
-- **Feature Implementation**: Real-Time Danger Zone Monitoring & Bounded Risk Scoring (`app/services/safety_engine.py`, `app/services/risk_engine.py`)
-- **How It Works**:
-  - Defines spatial restricted boundaries using normalized polygon coordinates (`DANGER_ZONE_POLYGON`).
-  - Performs ray-casting point-in-polygon checks on worker centroids in real-time.
-  - Implements state-based 0–100 Safety Score model starting at 100:
-    - Active worker in danger zone: $-20$ (1st worker), $-5$ (additional workers).
-    - Automatically updates site risk level: **LOW** (90–100), **MODERATE** (70–89), **HIGH** (0–69).
-    - Resets dynamically when workers clear the zone.
-- **Traceability**: `app/services/safety_engine.py:check_safety` $\rightarrow$ `app/services/risk_engine.py:calculate_safety_score` $\rightarrow$ `app.py:render_safety()`
-
----
-
-### Problem 3: Labor-Intensive & Reactive Manual Monitoring
-> *"Manual monitoring and reporting are labour-intensive and reactive."*
-
-- **Feature Implementation**: Automated Visual Event Engine & Event Lifecycle (`app/services/safety_engine.py`)
-- **How It Works**:
-  - Replaces manual video watching with automated visual event detection.
-  - Manages event lifecycle: `ENTRY` $\rightarrow$ `SUSTAINED` (cooldown interval) $\rightarrow$ `CLEARED`.
-  - Prevents frame-by-frame alert spamming through track state management (`zone_alert_sent`, `zone_last_sustained`).
-  - Logs all events to SQLite database (`events` table) with timestamp, severity (`HIGH`/`MEDIUM`/`LOW`), track ID, and descriptive message.
-- **Traceability**: `app/services/safety_engine.py:flush_events` $\rightarrow$ `app/database.py:insert_event` $\rightarrow$ `app.py:render_events()`
-
----
-
-### Problem 4: Reactive Management Reporting
-> *"Reporting is manual, slow, and reactive."*
-
-- **Feature Implementation**: Gemini AI Site Intelligence Summary (`app/services/gemini_service.py`)
-- **How It Works**:
-  - System extracts structured CV metrics (worker count, active violations, equipment utilisation, safety score, risk level).
-  - Passes structured metrics to Gemini AI (`gemini-2.0-flash`) to generate concise executive summaries with priority actions.
-  - Features automatic rule-based fallback if Gemini API key is not configured or offline, ensuring zero UI breakage.
-- **Traceability**: `app/services/gemini_service.py:generate_summary` $\rightarrow$ `app.py:render_ai_reports()`
-
----
-
-## Technical Constraints & Compliance
-
-- **Hardware**: Software-only MVP using laptop webcam (or video file mode).
-- **No External Hardware**: Zero Arduino, ESP32, Raspberry Pi, IoT sensors, RFID, or external cameras required.
-- **Accuracy**: Class names match underlying YOLO model (COCO classes) without manufacturing false equipment identities.
+| Problem Statement / Constraint | Technical Implementation | Code File(s) | Verification Method |
+|---|---|---|---|
+| **Software-Only Constraint** | Laptop webcam / WebRTC browser camera feed as single live sensor. Zero IoT or external hardware needed. | [webrtc_engine.py](file:///c:/Claude%20Hackathon/vision_site_intelligence/app/services/webrtc_engine.py) & [camera.py](file:///c:/Claude%20Hackathon/vision_site_intelligence/app/services/camera.py) | Verified live stream in browser via WebRTC |
+| **Global Camera Session** | Persistent WebRTC component mounted in top shell container (`global_webrtc_streamer`). Single camera lifecycle across all 9 pages. | [app.py](file:///c:/Claude%20Hackathon/vision_site_intelligence/app.py) | Verified camera stays LIVE during page navigation |
+| **Multi-Zone Safety Monitoring** | Evaluates 4 Safety Zones (`Crane Swing Area`, `Excavation Zone`, `Restricted Personnel Area`, `Equipment Operating Area`) per `(zone_id, track_id)`. | [safety_engine.py](file:///c:/Claude%20Hackathon/vision_site_intelligence/app/services/safety_engine.py) & [config.py](file:///c:/Claude%20Hackathon/vision_site_intelligence/app/config.py) | Verified independent zone entry/exit events |
+| **Visual Polygon Zone Editor** | Dedicated **Safety Zones** page featuring interactive normalized vertex sliders and live camera frame boundary preview. | [app.py](file:///c:/Claude%20Hackathon/vision_site_intelligence/app.py#L740-L790) | Verified live preview canvas draws updated polygon |
+| **Asset Utilisation Tracking** | Visual motion tracking calculates active vs idle duration and computes utilisation % without physical sensors. | [activity_engine.py](file:///c:/Claude%20Hackathon/vision_site_intelligence/app/services/activity_engine.py) | Verified utilisation % changes based on object motion |
+| **Bounded Safety Scoring** | Dynamic state-based 0–100 safety score assigning `LOW`, `MODERATE`, or `HIGH` site risk levels. | [risk_engine.py](file:///c:/Claude%20Hackathon/vision_site_intelligence/app/services/risk_engine.py) | Verified score drops during active violations and resets when clear |
+| **No Event Spam** | Event state machine (`ENTRY` $\rightarrow$ `SUSTAINED` every 5s $\rightarrow$ `CLEARED`) enforces per-track cooldowns. | [safety_engine.py](file:///c:/Claude%20Hackathon/vision_site_intelligence/app/services/safety_engine.py) | Verified exactly 1 entry event, 5s sustained alerts, 1 exit event |
+| **AI Executive Summaries** | Formats structured telematics into context payload for Gemini AI API with rule-based fallback when offline. | [gemini_service.py](file:///c:/Claude%20Hackathon/vision_site_intelligence/app/services/gemini_service.py) | Verified executive summary generation |
+| **SQLite Data Persistence** | Stores events, detections, and asset metrics in SQLite database (`data/site.db`) with confirmation clear control. | [database.py](file:///c:/Claude%20Hackathon/vision_site_intelligence/app/database.py) | Verified data persists across restarts and clears cleanly |
+| **Industrial Command UI** | Dark graphite/navy (`#090d12`) CSS design system with top command header, status badges, and hero canvas layout. | [app.py](file:///c:/Claude%20Hackathon/vision_site_intelligence/app.py) | Visual UI inspection |

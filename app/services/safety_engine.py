@@ -42,6 +42,7 @@ def check_safety(
     frame_width: int,
     frame_height: int,
     now: float,
+    zones: Optional[List[dict]] = None,
 ) -> Tuple[List[SafetyEvent], int]:
     """
     Check safety across all categorized Safety Zones for tracked objects.
@@ -53,6 +54,8 @@ def check_safety(
     events: List[SafetyEvent] = []
     active_violations = 0
 
+    eval_zones = zones if (zones is not None) else SAFETY_ZONES
+
     for obj in tracked:
         nx = obj.cx / frame_width
         ny = obj.cy / frame_height
@@ -62,13 +65,16 @@ def check_safety(
 
         in_any_zone = False
 
-        # Evaluate against each defined Safety Zone
-        for zone in SAFETY_ZONES:
-            zone_id = zone["id"]
-            zone_name = zone["name"]
-            zone_severity = zone["severity"]
-            zone_icon = zone["icon"]
-            zone_poly = zone["polygon"]
+        # Evaluate against each enabled Safety Zone
+        for zone in eval_zones:
+            if not zone.get("enabled", True):
+                continue
+
+            zone_id = zone.get("id", "default_zone")
+            zone_name = zone.get("name", "Restricted Area")
+            zone_severity = zone.get("severity", "HIGH")
+            zone_icon = zone.get("icon", "🔴")
+            zone_poly = zone.get("polygon", DANGER_ZONE_POLYGON)
 
             in_this_zone = point_in_polygon(nx, ny, zone_poly)
 
@@ -83,6 +89,8 @@ def check_safety(
                         severity=zone_severity,
                         track_id=obj.track_id,
                         message=f"Worker #{obj.track_id:02d} entered {zone_name} {zone_icon}",
+                        zone_id=zone_id,
+                        zone_name=zone_name,
                     ))
                     obj.active_zone_states[zone_id] = {
                         "alert_sent": True,
@@ -98,6 +106,8 @@ def check_safety(
                             severity=zone_severity,
                             track_id=obj.track_id,
                             message=f"Worker #{obj.track_id:02d} sustained violation in {zone_name} {zone_icon}",
+                            zone_id=zone_id,
+                            zone_name=zone_name,
                         ))
                         st_info["last_sustained"] = now
             else:
@@ -108,6 +118,8 @@ def check_safety(
                         severity="LOW",
                         track_id=obj.track_id,
                         message=f"Worker #{obj.track_id:02d} cleared {zone_name} {zone_icon}",
+                        zone_id=zone_id,
+                        zone_name=zone_name,
                     ))
                     del obj.active_zone_states[zone_id]
 
@@ -125,4 +137,6 @@ def flush_events(events: List[SafetyEvent]):
             severity=evt.severity,
             track_id=evt.track_id,
             message=evt.message,
+            zone_id=evt.zone_id,
+            zone_name=evt.zone_name,
         )

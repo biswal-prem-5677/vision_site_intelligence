@@ -44,6 +44,8 @@ class SafetyEvent:
     severity: str
     track_id: Optional[int]
     message: str
+    zone_id: Optional[str] = None
+    zone_name: Optional[str] = None
 
 
 @dataclass
