@@ -24,8 +24,18 @@ from app.services.activity_engine import (
 )
 from app.services.risk_engine import calculate_safety_score
 
+# Robust Multi-STUN Server Configuration for Mobile Carrier (4G/5G/WiFi) NAT Traversal
 RTC_CONFIGURATION = RTCConfiguration(
-    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+    {
+        "iceServers": [
+            {"urls": ["stun:stun.l.google.com:19302"]},
+            {"urls": ["stun:stun1.l.google.com:19302"]},
+            {"urls": ["stun:stun2.l.google.com:19302"]},
+            {"urls": ["stun:stun3.l.google.com:19302"]},
+            {"urls": ["stun:stun4.l.google.com:19302"]},
+            {"urls": ["stun:global.stun.twilio.com:3478"]},
+        ]
+    }
 )
 
 
@@ -57,8 +67,30 @@ class WebRTCVideoProcessor(VideoProcessorBase):
 
             h, w = img.shape[:2]
 
-            # Detections
-            detections = self.det.detect(img)
+            # Fast inference scale (640x360) for ultra-low latency on cloud/mobile
+            target_w = 640
+            scale = target_w / float(w)
+            target_h = int(h * scale)
+            small_img = cv2.resize(img, (target_w, target_h))
+
+            # Run YOLO Detection on fast small_img
+            raw_detections = self.det.detect(small_img)
+
+            # Scale detection bounding boxes back to full image resolution
+            detections = []
+            inv_scale = 1.0 / scale
+            for det in raw_detections:
+                scaled_box = [
+                    int(det["box"][0] * inv_scale),
+                    int(det["box"][1] * inv_scale),
+                    int(det["box"][2] * inv_scale),
+                    int(det["box"][3] * inv_scale),
+                ]
+                detections.append({
+                    "class_name": det["class_name"],
+                    "confidence": det["confidence"],
+                    "box": scaled_box,
+                })
 
             # Tracking
             tracked = self.trk.update(detections, w, h)

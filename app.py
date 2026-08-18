@@ -381,9 +381,9 @@ if st.session_state.get("camera_source") == "Browser Camera (WebRTC)":
                 video_processor_factory=WebRTCVideoProcessor,
                 media_stream_constraints={
                     "video": {
-                        "width": {"ideal": 1280, "max": 1920},
-                        "height": {"ideal": 720, "max": 1080},
-                        "frameRate": {"ideal": 30},
+                        "width": {"ideal": 640, "max": 1280},
+                        "height": {"ideal": 480, "max": 720},
+                        "frameRate": {"ideal": 24, "max": 30},
                     },
                     "audio": False,
                 },
@@ -1336,6 +1336,6 @@ elif page == "Settings":
 else:
     render_dashboard()
 
-if st.session_state.camera_running:
+if st.session_state.camera_running and st.session_state.get("camera_source") == "Local Webcam / Demo Video":
     time.sleep(0.08)
     st.rerun()
