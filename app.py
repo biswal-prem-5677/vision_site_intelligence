@@ -349,13 +349,20 @@ if st.session_state.get("camera_source") == "Browser Camera (WebRTC)":
         from app.services.webrtc_engine import WebRTCVideoProcessor, RTC_CONFIGURATION
 
         st.markdown('<div class="panel" style="margin-bottom:12px;">', unsafe_allow_html=True)
-        st.caption("PERSISTENT WEBRTC LIVE CAMERA STREAM")
+        st.caption("PERSISTENT WEBRTC LIVE CAMERA STREAM (HD 720p)")
         webrtc_ctx = webrtc_streamer(
             key="global_webrtc_streamer",
             mode=WebRtcMode.SENDRECV,
             rtc_configuration=RTC_CONFIGURATION,
             video_processor_factory=WebRTCVideoProcessor,
-            media_stream_constraints={"video": True, "audio": False},
+            media_stream_constraints={
+                "video": {
+                    "width": {"ideal": 1280, "max": 1920},
+                    "height": {"ideal": 720, "max": 1080},
+                    "frameRate": {"ideal": 30},
+                },
+                "audio": False,
+            },
             async_processing=True,
         )
         st.markdown('</div>', unsafe_allow_html=True)
@@ -769,7 +776,7 @@ def render_safety_zones():
         if buf is not None:
             preview_img = buf.copy()
         else:
-            preview_img = np.zeros((480, 640, 3), dtype=np.uint8) + 20
+            preview_img = np.zeros((720, 1280, 3), dtype=np.uint8) + 20
 
         # Draw all safety zones on preview
         h, w = preview_img.shape[:2]
