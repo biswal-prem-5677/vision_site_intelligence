@@ -58,6 +58,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+
 def _get_gemini_api_key() -> str:
     key = ""
     try:
@@ -160,6 +161,19 @@ st.markdown("""
         max-width: 100%;
     }
 
+    /* Target Streamlit Native Bordered Containers */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        background-color: var(--bg-card) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 6px !important;
+        padding: 16px !important;
+        margin-bottom: 10px !important;
+    }
+
+    div[data-testid="stVerticalBlockBorderWrapper"] > div {
+        gap: 0.5rem !important;
+    }
+
     /* Command Header */
     .command-header {
         display: flex;
@@ -209,20 +223,13 @@ st.markdown("""
     .pill-red { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); border: 1px solid rgba(239, 68, 68, 0.3); }
     .pill-gray { background: rgba(100, 116, 139, 0.15); color: var(--text-muted); border: 1px solid rgba(100, 116, 139, 0.3); }
 
-    /* Industrial Panels */
-    .panel {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        padding: 14px;
-    }
     .panel-title {
         font-size: 0.72rem;
         font-weight: 700;
         color: var(--text-muted);
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        margin-bottom: 10px;
+        margin-bottom: 6px;
     }
 
     /* KPI Cards */
@@ -365,24 +372,23 @@ if st.session_state.get("camera_source") == "Browser Camera (WebRTC)":
         from streamlit_webrtc import webrtc_streamer, WebRtcMode
         from app.services.webrtc_engine import WebRTCVideoProcessor, RTC_CONFIGURATION
 
-        st.markdown('<div class="panel" style="margin-bottom:12px;">', unsafe_allow_html=True)
-        st.caption("PERSISTENT WEBRTC LIVE CAMERA STREAM (HD 720p)")
-        webrtc_ctx = webrtc_streamer(
-            key="global_webrtc_streamer",
-            mode=WebRtcMode.SENDRECV,
-            rtc_configuration=RTC_CONFIGURATION,
-            video_processor_factory=WebRTCVideoProcessor,
-            media_stream_constraints={
-                "video": {
-                    "width": {"ideal": 1280, "max": 1920},
-                    "height": {"ideal": 720, "max": 1080},
-                    "frameRate": {"ideal": 30},
+        with st.container(border=True):
+            st.caption("PERSISTENT WEBRTC LIVE CAMERA STREAM (HD 720p)")
+            webrtc_ctx = webrtc_streamer(
+                key="global_webrtc_streamer",
+                mode=WebRtcMode.SENDRECV,
+                rtc_configuration=RTC_CONFIGURATION,
+                video_processor_factory=WebRTCVideoProcessor,
+                media_stream_constraints={
+                    "video": {
+                        "width": {"ideal": 1280, "max": 1920},
+                        "height": {"ideal": 720, "max": 1080},
+                        "frameRate": {"ideal": 30},
+                    },
+                    "audio": False,
                 },
-                "audio": False,
-            },
-            async_processing=True,
-        )
-        st.markdown('</div>', unsafe_allow_html=True)
+                async_processing=True,
+            )
 
         if webrtc_ctx and webrtc_ctx.state.playing and webrtc_ctx.video_processor:
             proc = webrtc_ctx.video_processor
@@ -432,44 +438,42 @@ with st.sidebar:
     st.markdown("---")
 
     # Global Camera Control Center
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.markdown('<div class="panel-title">GLOBAL CAMERA CONTROL</div>', unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown('<div class="panel-title">GLOBAL CAMERA CONTROL</div>', unsafe_allow_html=True)
 
-    st.session_state.camera_source = st.selectbox(
-        "Source",
-        ["Browser Camera (WebRTC)", "Local Webcam / Demo Video"],
-        index=0 if st.session_state.camera_source == "Browser Camera (WebRTC)" else 1,
-        label_visibility="collapsed",
-    )
+        st.session_state.camera_source = st.selectbox(
+            "Source",
+            ["Browser Camera (WebRTC)", "Local Webcam / Demo Video"],
+            index=0 if st.session_state.camera_source == "Browser Camera (WebRTC)" else 1,
+            label_visibility="collapsed",
+        )
 
-    if st.session_state.camera_running:
-        st.markdown('<span style="color:#10b981; font-size:0.8rem; font-weight:700;">● CAMERA STREAM ACTIVE</span>', unsafe_allow_html=True)
-        st.caption(f"Source: {st.session_state.camera_source.split()[0]} | AI: {st.session_state.fps:.1f} FPS")
-        if st.session_state.camera_source == "Local Webcam / Demo Video":
-            if st.button("⏹ Stop Camera", key="btn_global_stop", use_container_width=True):
-                _stop_camera()
-                st.rerun()
-    else:
-        st.markdown('<span style="color:#64748b; font-size:0.8rem; font-weight:700;">○ CAMERA OFFLINE</span>', unsafe_allow_html=True)
-        if st.session_state.camera_source == "Local Webcam / Demo Video":
-            if st.button("▶ Start Camera", key="btn_global_start", type="primary", use_container_width=True):
-                _start_camera()
-                st.rerun()
+        if st.session_state.camera_running:
+            st.markdown('<span style="color:#10b981; font-size:0.8rem; font-weight:700;">● CAMERA STREAM ACTIVE</span>', unsafe_allow_html=True)
+            st.caption(f"Source: {st.session_state.camera_source.split()[0]} | AI: {st.session_state.fps:.1f} FPS")
+            if st.session_state.camera_source == "Local Webcam / Demo Video":
+                if st.button("⏹ Stop Camera", key="btn_global_stop"):
+                    _stop_camera()
+                    st.rerun()
         else:
-            st.caption("Click START in persistent WebRTC stream box above to grant camera access.")
+            st.markdown('<span style="color:#64748b; font-size:0.8rem; font-weight:700;">○ CAMERA OFFLINE</span>', unsafe_allow_html=True)
+            if st.session_state.camera_source == "Local Webcam / Demo Video":
+                if st.button("▶ Start Camera", key="btn_global_start", type="primary"):
+                    _start_camera()
+                    st.rerun()
+            else:
+                st.caption("Click START in persistent WebRTC stream box above to grant camera access.")
 
-    # Zone monitoring master toggle
-    st.caption("Master Zone Monitoring")
-    st.session_state.danger_zone_enabled = st.checkbox(
-        "Enable Zone Engine",
-        value=st.session_state.danger_zone_enabled,
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
+        st.caption("Master Zone Monitoring")
+        st.session_state.danger_zone_enabled = st.checkbox(
+            "Enable Zone Engine",
+            value=st.session_state.danger_zone_enabled,
+        )
 
     st.markdown("---")
     st.caption("Data Reset")
     confirm_clear = st.checkbox("Confirm data reset", value=False, key="chk_confirm_reset")
-    if st.button("Clear All Data", use_container_width=True, disabled=not confirm_clear):
+    if st.button("Clear All Data", disabled=not confirm_clear):
         _clear_data()
         st.success("All database and session data cleared!")
         time.sleep(0.3)
@@ -580,7 +584,7 @@ def process_frame() -> bool:
         if getattr(e, "severity", "") == "HIGH" or (isinstance(e, dict) and e.get("severity") == "HIGH")
     )
     score, risk = calculate_safety_score(
-        active_violations=active_violations,
+        active_violations=active_violating_workers,
         session_incidents=high_incidents,
     )
     people_count = sum(1 for o in tracked if _is_person(o.class_name))
@@ -626,46 +630,41 @@ def render_dashboard():
 
     cam_col, right = st.columns([2, 1])
     with cam_col:
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("LIVE COMMAND SNAPSHOT")
-        _render_camera_feed()
-        st.markdown("</div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.caption("LIVE COMMAND SNAPSHOT")
+            _render_camera_feed()
 
     with right:
-        st.markdown('<div class="panel" style="margin-bottom:12px;">', unsafe_allow_html=True)
-        st.caption("RECENT SAFETY INCIDENTS")
-        events = get_recent_events(6)
-        if events:
-            for evt in events:
-                _render_event_row(evt)
-        else:
-            st.caption("No safety incidents recorded.")
-        st.markdown("</div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.caption("RECENT SAFETY INCIDENTS")
+            events = get_recent_events(6)
+            if events:
+                for evt in events:
+                    _render_event_row(evt)
+            else:
+                st.caption("No safety incidents recorded.")
 
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("ACTIVE SAFETY CONDITIONS")
-        _render_safety_status()
-        st.markdown("</div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.caption("ACTIVE SAFETY CONDITIONS")
+            _render_safety_status()
 
     st.markdown("<br/>", unsafe_allow_html=True)
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.caption("OPERATIONAL ASSET SUMMARY")
-    tracked = _get_tracked_from_session()
-    if tracked:
-        asset_sum = get_asset_summary(tracked)
-        if asset_sum["items"]:
-            _asset_table(asset_sum["items"])
+    with st.container(border=True):
+        st.caption("OPERATIONAL ASSET SUMMARY")
+        tracked = _get_tracked_from_session()
+        if tracked:
+            asset_sum = get_asset_summary(tracked)
+            if asset_sum["items"]:
+                _asset_table(asset_sum["items"])
+            else:
+                st.caption("No equipment currently detected on camera field of view.")
         else:
-            st.caption("No equipment currently detected on camera field of view.")
-    else:
-        st.caption("Start camera to track operational assets.")
-    st.markdown("</div>", unsafe_allow_html=True)
+            st.caption("Start camera to track operational assets.")
 
     st.markdown("<br/>", unsafe_allow_html=True)
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.caption("AI EXECUTIVE SUMMARY")
-    st.write(st.session_state.ai_summary)
-    st.markdown("</div>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.caption("AI EXECUTIVE SUMMARY")
+        st.write(st.session_state.ai_summary)
 
 
 # Page: Live Monitor (Hero Page)
@@ -689,134 +688,127 @@ def render_live_monitor():
 
     cam_col, command_panel = st.columns([2.5, 1])
     with cam_col:
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("LIVE VISION CANVAS")
-        _render_camera_feed()
-        st.markdown("</div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.caption("LIVE VISION CANVAS")
+            _render_camera_feed()
 
     with command_panel:
-        st.markdown('<div class="panel" style="margin-bottom:12px;">', unsafe_allow_html=True)
-        st.caption("SITE COMMAND METRICS")
-        m = st.session_state.metrics
-        st.write(f"• Workers Detected: **{m.worker_count}**")
-        st.write(f"• Equipment Tracked: **{m.asset_count}**")
-        st.write(f"• Active Violations: **{st.session_state.active_violations}**")
-        st.write(f"• Current Risk Level: **{m.risk_level}**")
-        st.write(f"• Safety Score: **{m.safety_score}/100**")
-        st.markdown("</div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.caption("SITE COMMAND METRICS")
+            m = st.session_state.metrics
+            st.write(f"• Workers Detected: **{m.worker_count}**")
+            st.write(f"• Equipment Tracked: **{m.asset_count}**")
+            st.write(f"• Active Violations: **{st.session_state.active_violations}**")
+            st.write(f"• Current Risk Level: **{m.risk_level}**")
+            st.write(f"• Safety Score: **{m.safety_score}/100**")
 
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("LIVE INCIDENTS STREAM")
-        session_evts = st.session_state.session_events
-        if session_evts:
-            for evt in list(reversed(session_evts))[:8]:
-                if isinstance(evt, dict):
-                    _render_event_row(evt)
-                else:
-                    _render_event_row({
-                        "timestamp": "Live",
-                        "severity": getattr(evt, "severity", "LOW"),
-                        "message": getattr(evt, "message", "Event"),
-                        "track_id": getattr(evt, "track_id", None),
-                    })
-        else:
-            st.caption("No active incidents in current session.")
-        st.markdown("</div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.caption("LIVE INCIDENTS STREAM")
+            session_evts = st.session_state.session_events
+            if session_evts:
+                for evt in list(reversed(session_evts))[:8]:
+                    if isinstance(evt, dict):
+                        _render_event_row(evt)
+                    else:
+                        _render_event_row({
+                            "timestamp": "Live",
+                            "severity": getattr(evt, "severity", "LOW"),
+                            "message": getattr(evt, "message", "Event"),
+                            "track_id": getattr(evt, "track_id", None),
+                        })
+            else:
+                st.caption("No active incidents in current session.")
 
 
 # Page: Safety Zones (NEW PAGE & VISUAL ZONE EDITOR)
 def render_safety_zones():
-    page_title("Safety Zones", "Multi-Zone Safety Management & Visual Polygon Editor")
+    page_title("Safety Zones", "Multi-Zone Safety Management & 4-Point Polygon Editor")
 
     zones = st.session_state.safety_zones
 
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.caption("ACTIVE SAFETY ZONES OVERVIEW")
-    z_cols = st.columns(len(zones) if zones else 1)
-    for idx, z in enumerate(zones):
-        with z_cols[idx % len(z_cols)]:
-            status = "ACTIVE" if z.get("enabled", True) else "INACTIVE"
-            color_hex = z.get("color_hex", "#3b82f6")
-            st.markdown(f"""
-            <div style="background:var(--bg-secondary); border:1px solid var(--border); border-left:4px solid {color_hex}; border-radius:4px; padding:10px;">
-                <div style="font-weight:700; font-size:0.85rem;">{z.get('icon','📍')} {z['name']}</div>
-                <div style="font-size:0.7rem; color:var(--text-muted); margin-top:2px;">Severity: <strong>{z['severity']}</strong> | Status: <strong>{status}</strong></div>
-            </div>
-            """, unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.caption("ACTIVE SAFETY ZONES OVERVIEW")
+        z_cols = st.columns(len(zones) if zones else 1)
+        for idx, z in enumerate(zones):
+            with z_cols[idx % len(z_cols)]:
+                status = "ACTIVE" if z.get("enabled", True) else "INACTIVE"
+                color_hex = z.get("color_hex", "#3b82f6")
+                st.markdown(f"""
+                <div style="background:var(--bg-secondary); border:1px solid var(--border); border-left:4px solid {color_hex}; border-radius:4px; padding:10px;">
+                    <div style="font-weight:700; font-size:0.85rem;">{z.get('icon','📍')} {z['name']}</div>
+                    <div style="font-size:0.7rem; color:var(--text-muted); margin-top:2px;">Severity: <strong>{z['severity']}</strong> | Status: <strong>{status}</strong></div>
+                </div>
+                """, unsafe_allow_html=True)
 
     st.markdown("<br/>", unsafe_allow_html=True)
 
     col_editor, col_preview = st.columns([1.2, 1.8])
 
     with col_editor:
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("VISUAL POLYGON ZONE EDITOR")
+        with st.container(border=True):
+            st.caption("4-POINT SAFETY ZONE POLYGON EDITOR (NORMALIZED COORDINATES)")
 
-        zone_names = [z["name"] for z in zones]
-        selected_name = st.selectbox("Select Zone to Edit", zone_names, index=0 if zone_names else 0)
+            zone_names = [z["name"] for z in zones]
+            selected_name = st.selectbox("Select Zone to Edit", zone_names, index=0 if zone_names else 0)
 
-        # Find target zone
-        target_zone = next((z for z in zones if z["name"] == selected_name), zones[0] if zones else None)
+            # Find target zone
+            target_zone = next((z for z in zones if z["name"] == selected_name), zones[0] if zones else None)
 
-        if target_zone:
-            st.session_state.editing_zone_id = target_zone["id"]
-            z_enabled = st.checkbox("Enable Zone Monitoring", value=target_zone.get("enabled", True), key=f"chk_en_{target_zone['id']}")
-            target_zone["enabled"] = z_enabled
+            if target_zone:
+                st.session_state.editing_zone_id = target_zone["id"]
+                z_enabled = st.checkbox("Enable Zone Monitoring", value=target_zone.get("enabled", True), key=f"chk_en_{target_zone['id']}")
+                target_zone["enabled"] = z_enabled
 
-            st.caption("Normalized Polygon Vertices (0.00 – 1.00):")
-            poly = target_zone.get("polygon", [(0.1, 0.1), (0.5, 0.1), (0.5, 0.5), (0.1, 0.5)])
+                st.caption("Normalized Polygon Vertices (0.00 – 1.00):")
+                poly = target_zone.get("polygon", [(0.1, 0.1), (0.5, 0.1), (0.5, 0.5), (0.1, 0.5)])
 
-            # Edit 4 vertices
-            v1_x = st.slider("Vertex 1 X", 0.0, 1.0, float(poly[0][0]), 0.02, key=f"v1x_{target_zone['id']}")
-            v1_y = st.slider("Vertex 1 Y", 0.0, 1.0, float(poly[0][1]), 0.02, key=f"v1y_{target_zone['id']}")
+                # Edit 4 vertices
+                v1_x = st.slider("Vertex 1 X", 0.0, 1.0, float(poly[0][0]), 0.02, key=f"v1x_{target_zone['id']}")
+                v1_y = st.slider("Vertex 1 Y", 0.0, 1.0, float(poly[0][1]), 0.02, key=f"v1y_{target_zone['id']}")
 
-            v2_x = st.slider("Vertex 2 X", 0.0, 1.0, float(poly[1][0]), 0.02, key=f"v2x_{target_zone['id']}")
-            v2_y = st.slider("Vertex 2 Y", 0.0, 1.0, float(poly[1][1]), 0.02, key=f"v2y_{target_zone['id']}")
+                v2_x = st.slider("Vertex 2 X", 0.0, 1.0, float(poly[1][0]), 0.02, key=f"v2x_{target_zone['id']}")
+                v2_y = st.slider("Vertex 2 Y", 0.0, 1.0, float(poly[1][1]), 0.02, key=f"v2y_{target_zone['id']}")
 
-            v3_x = st.slider("Vertex 3 X", 0.0, 1.0, float(poly[2][0]), 0.02, key=f"v3x_{target_zone['id']}")
-            v3_y = st.slider("Vertex 3 Y", 0.0, 1.0, float(poly[2][1]), 0.02, key=f"v3y_{target_zone['id']}")
+                v3_x = st.slider("Vertex 3 X", 0.0, 1.0, float(poly[2][0]), 0.02, key=f"v3x_{target_zone['id']}")
+                v3_y = st.slider("Vertex 3 Y", 0.0, 1.0, float(poly[2][1]), 0.02, key=f"v3y_{target_zone['id']}")
 
-            v4_x = st.slider("Vertex 4 X", 0.0, 1.0, float(poly[3][0]), 0.02, key=f"v4x_{target_zone['id']}")
-            v4_y = st.slider("Vertex 4 Y", 0.0, 1.0, float(poly[3][1]), 0.02, key=f"v4y_{target_zone['id']}")
+                v4_x = st.slider("Vertex 4 X", 0.0, 1.0, float(poly[3][0]), 0.02, key=f"v4x_{target_zone['id']}")
+                v4_y = st.slider("Vertex 4 Y", 0.0, 1.0, float(poly[3][1]), 0.02, key=f"v4y_{target_zone['id']}")
 
-            target_zone["polygon"] = [(v1_x, v1_y), (v2_x, v2_y), (v3_x, v3_y), (v4_x, v4_y)]
+                target_zone["polygon"] = [(v1_x, v1_y), (v2_x, v2_y), (v3_x, v3_y), (v4_x, v4_y)]
 
-            st.success(f"Updated polygon boundaries for {target_zone['name']}")
-
-        st.markdown("</div>", unsafe_allow_html=True)
+                st.success(f"Updated polygon boundaries for {target_zone['name']}")
 
     with col_preview:
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("LIVE ZONE BOUNDARY PREVIEW CANVAS")
-        buf = st.session_state.frame_buffer
-        if buf is not None:
-            preview_img = buf.copy()
-        else:
-            preview_img = np.zeros((720, 1280, 3), dtype=np.uint8) + 20
+        with st.container(border=True):
+            st.caption("LIVE ZONE BOUNDARY PREVIEW CANVAS")
+            buf = st.session_state.frame_buffer
+            if buf is not None:
+                preview_img = buf.copy()
+            else:
+                preview_img = np.zeros((720, 1280, 3), dtype=np.uint8) + 20
 
-        # Draw all safety zones on preview
-        h, w = preview_img.shape[:2]
-        for z in zones:
-            if not z.get("enabled", True):
-                continue
-            pts = np.array([[int(p[0] * w), int(p[1] * h)] for p in z["polygon"]], dtype=np.int32)
-            bgr = z.get("color_bgr", (0, 0, 255))
-            overlay = preview_img.copy()
-            cv2.fillPoly(overlay, [pts], (int(bgr[0] * 0.3), int(bgr[1] * 0.3), int(bgr[2] * 0.3)))
-            cv2.addWeighted(overlay, 0.4, preview_img, 0.6, 0, preview_img)
-            thickness = 4 if target_zone and z["id"] == target_zone["id"] else 2
-            cv2.polylines(preview_img, [pts], isClosed=True, color=bgr, thickness=thickness)
-            cv2.putText(
-                preview_img, z["name"].upper(),
-                (pts[0][0] + 5, max(pts[0][1] - 8, 15)),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, bgr, 2,
-            )
+            # Draw all safety zones on preview
+            h, w = preview_img.shape[:2]
+            for z in zones:
+                if not z.get("enabled", True):
+                    continue
+                pts = np.array([[int(p[0] * w), int(p[1] * h)] for p in z["polygon"]], dtype=np.int32)
+                bgr = z.get("color_bgr", (0, 0, 255))
+                overlay = preview_img.copy()
+                cv2.fillPoly(overlay, [pts], (int(bgr[0] * 0.3), int(bgr[1] * 0.3), int(bgr[2] * 0.3)))
+                cv2.addWeighted(overlay, 0.4, preview_img, 0.6, 0, preview_img)
+                thickness = 4 if target_zone and z["id"] == target_zone["id"] else 2
+                cv2.polylines(preview_img, [pts], isClosed=True, color=bgr, thickness=thickness)
+                cv2.putText(
+                    preview_img, z["name"].upper(),
+                    (pts[0][0] + 5, max(pts[0][1] - 8, 15)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, bgr, 2,
+                )
 
-        rgb_preview = cv2.cvtColor(preview_img, cv2.COLOR_BGR2RGB)
-        st.image(rgb_preview, use_container_width=True, channels="RGB")
-        st.caption("The exact normalized polygon coordinates shown above are evaluated by the Safety Engine in real time.")
-        st.markdown("</div>", unsafe_allow_html=True)
+            rgb_preview = cv2.cvtColor(preview_img, cv2.COLOR_BGR2RGB)
+            st.image(rgb_preview, use_container_width=True, channels="RGB")
+            st.caption("The exact normalized polygon coordinates shown above are evaluated by the Safety Engine in real time.")
 
 
 # Page: Safety
@@ -833,12 +825,9 @@ def render_safety():
     }
     risk_text, risk_color = risk_info.get(m.risk_level, ("Unknown", "gray"))
 
-    st.markdown(f"""
-    <div class="panel" style="border-left: 4px solid var(--accent-{risk_color});">
-        <div class="panel-title">CURRENT SITE RISK LEVEL: {m.risk_level}</div>
-        <p style="color: var(--text-secondary); margin: 0;">{risk_text}</p>
-    </div>
-    """, unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown(f'<div style="font-weight:700; font-size:0.9rem; color:var(--accent-{risk_color});">CURRENT SITE RISK LEVEL: {m.risk_level}</div>', unsafe_allow_html=True)
+        st.write(risk_text)
 
     st.markdown("<br/>", unsafe_allow_html=True)
 
@@ -858,28 +847,26 @@ def render_safety():
 
     col_a, col_b = st.columns(2)
     with col_a:
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("CONFIGURED SAFETY ZONES")
-        for z in st.session_state.safety_zones:
-            status_text = "ENABLED" if z.get("enabled", True) else "DISABLED"
-            st.markdown(
-                f"<div style='margin-bottom:8px;'>{z['icon']} <strong>{z['name']}</strong> — "
-                f"<span style='color:{z['color_hex']}; font-weight:600;'>{z['severity']} RISK ({status_text})</span></div>",
-                unsafe_allow_html=True,
-            )
-        st.markdown("</div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.caption("CONFIGURED SAFETY ZONES")
+            for z in st.session_state.safety_zones:
+                status_text = "ENABLED" if z.get("enabled", True) else "DISABLED"
+                st.markdown(
+                    f"<div style='margin-bottom:8px;'>{z['icon']} <strong>{z['name']}</strong> — "
+                    f"<span style='color:{z['color_hex']}; font-weight:600;'>{z['severity']} RISK ({status_text})</span></div>",
+                    unsafe_allow_html=True,
+                )
 
     with col_b:
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("SAFETY SCORING & PPE MODEL")
-        st.write("• Base Score: **100**")
-        st.write("• Safety Zone Entry Penalty: **-20**")
-        st.write("• Repeated Zone Violation Penalty: **-5**")
-        st.markdown("---")
-        st.caption("PPE DETECTION MODEL STATUS")
-        st.markdown('<span class="badge badge-amber">PPE DETECTION: Not configured</span>', unsafe_allow_html=True)
-        st.caption("Standard YOLOv8n COCO model detects person bounding boxes. Construction PPE compliance requires custom fine-tuned model weights.")
-        st.markdown("</div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.caption("SAFETY SCORING & PPE MODEL")
+            st.write("• Base Score: **100**")
+            st.write("• Safety Zone Entry Penalty: **-20**")
+            st.write("• Repeated Zone Violation Penalty: **-5**")
+            st.markdown("---")
+            st.caption("PPE DETECTION MODEL STATUS")
+            st.markdown('<span class="badge badge-amber">PPE DETECTION: Not configured</span>', unsafe_allow_html=True)
+            st.caption("Standard YOLOv8n COCO model detects person bounding boxes. Construction PPE compliance requires custom fine-tuned model weights.")
 
 
 # Page: Assets
@@ -900,13 +887,12 @@ def render_assets():
         _kpi_card("Avg Utilisation", f"{asset_s['avg_util']:.1f}%", "overall site", "blue")
 
     st.markdown("<br/>", unsafe_allow_html=True)
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.caption("DETECTED ASSETS (COCO PROXY CLASSES)")
-    if asset_s["items"]:
-        _asset_table(asset_s["items"])
-    else:
-        st.caption("No equipment currently detected. Move vehicles or equipment proxies in front of camera.")
-    st.markdown("</div>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.caption("DETECTED ASSETS (COCO PROXY CLASSES)")
+        if asset_s["items"]:
+            _asset_table(asset_s["items"])
+        else:
+            st.caption("No equipment currently detected. Move vehicles or equipment proxies in front of camera.")
 
 
 # Page: Events
@@ -930,13 +916,12 @@ def render_events():
     if search:
         events = [e for e in events if search.lower() in (e.get("message", "") or "").lower()]
 
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    if events:
-        for evt in events[:limit]:
-            _render_event_row(evt)
-    else:
-        st.caption("No historical events match current filter.")
-    st.markdown("</div>", unsafe_allow_html=True)
+    with st.container(border=True):
+        if events:
+            for evt in events[:limit]:
+                _render_event_row(evt)
+        else:
+            st.caption("No historical events match current filter.")
 
 
 # Page: Analytics
@@ -965,36 +950,32 @@ def render_analytics():
     tracked = _get_tracked_from_session()
     col_a, col_b = st.columns(2)
     with col_a:
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("ACTIVE vs IDLE TIME (SESSION)")
-        _render_active_idle_chart(tracked)
-        st.markdown("</div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.caption("ACTIVE vs IDLE TIME (SESSION)")
+            _render_active_idle_chart(tracked)
 
     with col_b:
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("UTILISATION BY ASSET")
-        _render_util_chart(tracked)
-        st.markdown("</div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.caption("UTILISATION BY ASSET")
+            _render_util_chart(tracked)
 
     st.markdown("<br/>", unsafe_allow_html=True)
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.caption("EVENT SEVERITY DISTRIBUTION (SESSION)")
-    event_dicts = []
-    for e in session_events:
-        if isinstance(e, dict):
-            event_dicts.append(e)
-        elif hasattr(e, "severity"):
-            event_dicts.append({"severity": e.severity})
-    _render_event_chart(event_dicts)
-    st.markdown("</div>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.caption("EVENT SEVERITY DISTRIBUTION (SESSION)")
+        event_dicts = []
+        for e in session_events:
+            if isinstance(e, dict):
+                event_dicts.append(e)
+            elif hasattr(e, "severity"):
+                event_dicts.append({"severity": e.severity})
+        _render_event_chart(event_dicts)
 
     st.markdown("<br/>", unsafe_allow_html=True)
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.caption("PERSISTED HISTORICAL ANALYTICS (DATABASE)")
-    db_events = get_recent_events(100)
-    st.write(f"• Total Historical Database Events Logged: **{len(db_events)}**")
-    st.write(f"• High-Risk Historical Events: **{sum(1 for e in db_events if e.get('severity') == 'HIGH')}**")
-    st.markdown("</div>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.caption("PERSISTED HISTORICAL ANALYTICS (DATABASE)")
+        db_events = get_recent_events(100)
+        st.write(f"• Total Historical Database Events Logged: **{len(db_events)}**")
+        st.write(f"• High-Risk Historical Events: **{sum(1 for e in db_events if e.get('severity') == 'HIGH')}**")
 
 
 # Page: AI Reports
@@ -1005,10 +986,9 @@ def render_ai_reports():
         _generate_report()
 
     st.markdown("<br/>", unsafe_allow_html=True)
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.caption("LATEST EXECUTIVE REPORT")
-    st.write(st.session_state.ai_summary)
-    st.markdown("</div>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.caption("LATEST EXECUTIVE REPORT")
+        st.write(st.session_state.ai_summary)
 
 
 def _generate_report():
@@ -1065,31 +1045,29 @@ def render_settings():
 
     col_a, col_b = st.columns(2)
     with col_a:
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("DETECTION ENGINE TUNING")
-        new_conf = st.slider("YOLO Confidence Threshold", 0.1, 0.9, float(st.session_state.confidence_threshold), 0.05)
-        new_idle = st.slider("Asset Idle Threshold (seconds)", 1.0, 10.0, float(st.session_state.idle_threshold), 0.5)
-        st.session_state.confidence_threshold = new_conf
-        st.session_state.idle_threshold = new_idle
-        st.markdown("</div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.caption("DETECTION ENGINE TUNING")
+            new_conf = st.slider("YOLO Confidence Threshold", 0.1, 0.9, float(st.session_state.confidence_threshold), 0.05)
+            new_idle = st.slider("Asset Idle Threshold (seconds)", 1.0, 10.0, float(st.session_state.idle_threshold), 0.5)
+            st.session_state.confidence_threshold = new_conf
+            st.session_state.idle_threshold = new_idle
 
     with col_b:
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("SYSTEM DIAGNOSTICS")
+        with st.container(border=True):
+            st.caption("SYSTEM DIAGNOSTICS")
 
-        cam_status = "Connected" if st.session_state.camera_running else "Disconnected"
-        st.markdown(f"Camera Stream: {_status_badge(cam_status)}", unsafe_allow_html=True)
-        st.markdown(f"YOLO Model: {_status_badge('YOLOv8n')}", unsafe_allow_html=True)
+            cam_status = "Connected" if st.session_state.camera_running else "Disconnected"
+            st.markdown(f"Camera Stream: {_status_badge(cam_status)}", unsafe_allow_html=True)
+            st.markdown(f"YOLO Model: {_status_badge('YOLOv8n')}", unsafe_allow_html=True)
 
-        api_key = _get_gemini_api_key()
-        gemini_on = bool(api_key and len(api_key) > 10 and "your_gemini" not in api_key.lower())
-        gemini_status = "Configured" if gemini_on else "Not configured"
-        st.markdown(f"Gemini AI: {_status_badge(gemini_status)}", unsafe_allow_html=True)
+            api_key = _get_gemini_api_key()
+            gemini_on = bool(api_key and len(api_key) > 10 and "your_gemini" not in api_key.lower())
+            gemini_status = "Configured" if gemini_on else "Not configured"
+            st.markdown(f"Gemini AI: {_status_badge(gemini_status)}", unsafe_allow_html=True)
 
-        db_exists = os.path.exists("data/site.db")
-        db_status = "Active" if db_exists else "Not initialized"
-        st.markdown(f"SQLite DB: {_status_badge(db_status)}", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+            db_exists = os.path.exists("data/site.db")
+            db_status = "Active" if db_exists else "Not initialized"
+            st.markdown(f"SQLite DB: {_status_badge(db_status)}", unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1126,7 +1104,7 @@ def _render_camera_feed():
             rgb = cv2.cvtColor(buf, cv2.COLOR_BGR2RGB)
             st.image(rgb, channels="RGB")
         else:
-            st.info("📹 Camera initializing... Click **START** in persistent transport panel above if camera permission is requested.")
+            st.info("📹 Camera initializing... Click **START** in persistent stream box above if camera permission is requested.")
     else:
         buf = st.session_state.frame_buffer
         if buf is not None:
@@ -1317,10 +1295,10 @@ def _render_event_chart(events):
 
 def _offline_prompt():
     st.markdown("""
-    <div class="panel" style="text-align:center; padding: 40px;">
-        <div style="font-size:3rem; margin-bottom:12px;">📹</div>
-        <div style="font-size:1.1rem; font-weight:600; margin-bottom:8px;">Camera Offline</div>
-        <div style="color:var(--text-muted); font-size:0.9rem;">
+    <div style="text-align:center; padding: 30px;">
+        <div style="font-size:2.5rem; margin-bottom:8px;">📹</div>
+        <div style="font-size:1.0rem; font-weight:600; margin-bottom:4px;">Camera Offline</div>
+        <div style="color:var(--text-muted); font-size:0.85rem;">
             Click <strong>Start Camera</strong> in the sidebar to begin live monitoring.
         </div>
     </div>
