@@ -7,7 +7,7 @@ Event lifecycle:
 Per-track cooldown prevents frame-by-frame spam.
 """
 
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from datetime import datetime
 from app.schemas import TrackedObject, SafetyEvent
 from app.config import (
@@ -43,16 +43,18 @@ def check_safety(
     frame_height: int,
     now: float,
     zones: Optional[List[dict]] = None,
-) -> Tuple[List[SafetyEvent], int]:
+) -> Tuple[List[SafetyEvent], int, int]:
     """
     Check safety across all categorized Safety Zones for tracked objects.
 
     Returns:
         events: list of new safety events this frame
-        active_violations: count of objects currently in any active danger/safety zone
+        active_violating_workers: count of unique workers currently in at least one active zone
+        active_zone_violations: total count of active zone memberships
     """
     events: List[SafetyEvent] = []
-    active_violations = 0
+    active_zone_violations = 0
+    violating_worker_ids = set()
 
     eval_zones = zones if (zones is not None) else SAFETY_ZONES
 
@@ -80,10 +82,10 @@ def check_safety(
 
             if in_this_zone:
                 in_any_zone = True
-                active_violations += 1
+                active_zone_violations += 1
+                violating_worker_ids.add(obj.track_id)
 
                 if zone_id not in obj.active_zone_states:
-                    # ENTRY event for this specific zone
                     events.append(SafetyEvent(
                         event_type=f"zone_entry_{zone_id}",
                         severity=zone_severity,
@@ -98,7 +100,6 @@ def check_safety(
                         "last_sustained": now,
                     }
                 else:
-                    # Already in this zone — check for sustained violation
                     st_info = obj.active_zone_states[zone_id]
                     if (now - st_info["last_sustained"]) >= SUSTAINED_VIOLATION_INTERVAL:
                         events.append(SafetyEvent(
@@ -112,7 +113,6 @@ def check_safety(
                         st_info["last_sustained"] = now
             else:
                 if zone_id in obj.active_zone_states:
-                    # EXIT / CLEARED event for this specific zone
                     events.append(SafetyEvent(
                         event_type=f"zone_cleared_{zone_id}",
                         severity="LOW",
@@ -125,7 +125,8 @@ def check_safety(
 
         obj.in_zone = in_any_zone
 
-    return events, active_violations
+    active_violating_workers = len(violating_worker_ids)
+    return events, active_violating_workers, active_zone_violations
 
 
 def flush_events(events: List[SafetyEvent]):

@@ -72,7 +72,7 @@ def get_asset_summary(tracked: List[TrackedObject]) -> dict:
         util = round(obj.active_time / total * 100, 1) if total > 0 else 0.0
         items.append({
             "id": obj.track_id,
-            "class": obj.class_name,
+            "class": get_display_label(obj.class_name),
             "status": "IDLE" if obj.is_idle else "ACTIVE",
             "util": util,
             "active_s": round(obj.active_time, 1),
@@ -80,8 +80,12 @@ def get_asset_summary(tracked: List[TrackedObject]) -> dict:
             "confidence": round(obj.confidence, 2),
         })
     avg = sum(i["util"] for i in items) / len(items) if items else 0.0
+    active_count = sum(1 for i in items if i["status"] == "ACTIVE")
+    idle_count = sum(1 for i in items if i["status"] == "IDLE")
     return {
         "count": len(items),
+        "active": active_count,
+        "idle": idle_count,
         "avg_util": round(avg, 1),
         "items": items,
     }

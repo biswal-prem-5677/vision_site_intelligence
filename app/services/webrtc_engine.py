@@ -68,9 +68,12 @@ class WebRTCVideoProcessor(VideoProcessorBase):
             update_activity(tracked, dt, w, h)
 
             # Safety Engine
-            active_violations = 0
+            active_violating_workers = 0
+            active_zone_violations = 0
             if self.danger_zone_enabled:
-                safety_events, active_violations = check_safety(tracked, w, h, now, zones=self.zones)
+                safety_events, active_violating_workers, active_zone_violations = check_safety(
+                    tracked, w, h, now, zones=self.zones
+                )
                 if safety_events:
                     flush_events(safety_events)
                     with self.lock:
@@ -119,9 +122,9 @@ class WebRTCVideoProcessor(VideoProcessorBase):
 
             # Metrics
             asset_s = get_asset_summary(tracked)
-            high_incidents = sum(1 for e in self.session_events if e.severity == "HIGH")
+            high_incidents = sum(1 for e in self.session_events if getattr(e, "severity", "") == "HIGH")
             score, risk = calculate_safety_score(
-                active_violations=active_violations,
+                active_violations=active_violating_workers,
                 session_incidents=high_incidents,
             )
             people_count = sum(1 for o in tracked if _is_person(o.class_name))
@@ -129,7 +132,8 @@ class WebRTCVideoProcessor(VideoProcessorBase):
             with self.lock:
                 self.fps = inf_fps
                 self.inference_fps = inf_fps
-                self.active_violations = active_violations
+                self.active_violations = active_violating_workers
+                self.active_zone_violations = active_zone_violations
                 self.metrics = SiteMetrics(
                     worker_count=people_count,
                     asset_count=asset_s["count"],

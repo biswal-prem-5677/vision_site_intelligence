@@ -12,6 +12,7 @@ class GeminiService:
         self.enabled = bool(api_key and len(api_key) > 10 and "your_gemini" not in api_key.lower())
         self.client = None
         self.use_new_sdk = False
+        self.last_generation_source = "none"
 
         if self.enabled:
             try:
@@ -29,6 +30,7 @@ class GeminiService:
 
     def generate_summary(self, metrics: dict) -> str:
         if not self.enabled or self.client is None:
+            self.last_generation_source = "fallback"
             return self._fallback_summary(metrics)
 
         prompt = f"""You are a construction site safety analyst. Generate a concise site intelligence summary based on these metrics:
@@ -49,14 +51,18 @@ Keep it under 120 words. Be direct and professional."""
         try:
             if self.use_new_sdk:
                 response = self.client.models.generate_content(
-                    model="gemini-2.5-flash",
+                    model=GEMINI_MODEL,
                     contents=prompt,
                 )
-                return response.text.strip()
+                summary = response.text.strip()
             else:
                 response = self.client.generate_content(prompt)
-                return response.text.strip()
+                summary = response.text.strip()
+
+            self.last_generation_source = "gemini"
+            return summary
         except Exception:
+            self.last_generation_source = "fallback"
             return self._fallback_summary(metrics)
 
     def _fallback_summary(self, metrics: dict) -> str:

@@ -348,17 +348,19 @@ if st.session_state.get("camera_source") == "Browser Camera (WebRTC)":
         from streamlit_webrtc import webrtc_streamer, WebRtcMode
         from app.services.webrtc_engine import WebRTCVideoProcessor, RTC_CONFIGURATION
 
-        with st.expander("📹 Global Camera Feed Transport (Persistent WebRTC Session)", expanded=False):
-            webrtc_ctx = webrtc_streamer(
-                key="global_webrtc_streamer",
-                mode=WebRtcMode.SENDRECV,
-                rtc_configuration=RTC_CONFIGURATION,
-                video_processor_factory=WebRTCVideoProcessor,
-                media_stream_constraints={"video": True, "audio": False},
-                async_processing=True,
-            )
+        st.markdown('<div class="panel" style="margin-bottom:12px;">', unsafe_allow_html=True)
+        st.caption("PERSISTENT WEBRTC LIVE CAMERA STREAM")
+        webrtc_ctx = webrtc_streamer(
+            key="global_webrtc_streamer",
+            mode=WebRtcMode.SENDRECV,
+            rtc_configuration=RTC_CONFIGURATION,
+            video_processor_factory=WebRTCVideoProcessor,
+            media_stream_constraints={"video": True, "audio": False},
+            async_processing=True,
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
 
-        if webrtc_ctx.video_processor:
+        if webrtc_ctx and webrtc_ctx.state.playing and webrtc_ctx.video_processor:
             proc = webrtc_ctx.video_processor
             proc.danger_zone_enabled = st.session_state.danger_zone_enabled
             proc.zones = list(st.session_state.safety_zones)
@@ -370,6 +372,9 @@ if st.session_state.get("camera_source") == "Browser Camera (WebRTC)":
                 st.session_state.inference_fps = proc.inference_fps
                 if proc.session_events:
                     st.session_state.session_events = list(proc.session_events)
+        else:
+            if st.session_state.camera_source == "Browser Camera (WebRTC)":
+                st.session_state.camera_running = False
     except Exception as e:
         st.error(f"WebRTC Engine Initialization: {e}")
 
@@ -414,11 +419,12 @@ with st.sidebar:
     )
 
     if st.session_state.camera_running:
-        st.markdown('<span style="color:#10b981; font-size:0.8rem; font-weight:700;">● CAMERA LIVE</span>', unsafe_allow_html=True)
-        st.caption(f"Stream: WebRTC | AI: {st.session_state.fps:.1f} FPS")
-        if st.button("⏹ Stop Camera", key="btn_global_stop", use_container_width=True):
-            _stop_camera()
-            st.rerun()
+        st.markdown('<span style="color:#10b981; font-size:0.8rem; font-weight:700;">● CAMERA STREAM ACTIVE</span>', unsafe_allow_html=True)
+        st.caption(f"Source: {st.session_state.camera_source.split()[0]} | AI: {st.session_state.fps:.1f} FPS")
+        if st.session_state.camera_source == "Local Webcam / Demo Video":
+            if st.button("⏹ Stop Camera", key="btn_global_stop", use_container_width=True):
+                _stop_camera()
+                st.rerun()
     else:
         st.markdown('<span style="color:#64748b; font-size:0.8rem; font-weight:700;">○ CAMERA OFFLINE</span>', unsafe_allow_html=True)
         if st.session_state.camera_source == "Local Webcam / Demo Video":
@@ -426,7 +432,7 @@ with st.sidebar:
                 _start_camera()
                 st.rerun()
         else:
-            st.caption("Click START in persistent WebRTC transport panel above to grant camera access.")
+            st.caption("Click START in persistent WebRTC stream box above to grant camera access.")
 
     # Zone monitoring master toggle
     st.caption("Master Zone Monitoring")
@@ -489,9 +495,10 @@ def process_frame() -> bool:
     tracked = trk.update(detections, w, h)
     update_activity(tracked, dt, w, h)
 
-    active_violations = 0
+    active_violating_workers = 0
+    active_zone_violations = 0
     if st.session_state.danger_zone_enabled:
-        safety_events, active_violations = check_safety(
+        safety_events, active_violating_workers, active_zone_violations = check_safety(
             tracked, w, h, now, zones=st.session_state.safety_zones
         )
         if safety_events:
@@ -499,7 +506,7 @@ def process_frame() -> bool:
             st.session_state.session_events.extend(safety_events)
             if len(st.session_state.session_events) > 200:
                 st.session_state.session_events = st.session_state.session_events[-200:]
-    st.session_state.active_violations = active_violations
+    st.session_state.active_violations = active_violating_workers
 
     ann = frame.copy()
 
@@ -1003,10 +1010,14 @@ def _generate_report():
             if svc:
                 st.session_state.ai_summary = svc.generate_summary(data)
                 st.session_state.last_summary_time = time.time()
-                st.success("Executive report generated via Gemini AI.")
+                src = getattr(svc, "last_generation_source", "gemini")
+                if src == "gemini":
+                    st.success("Executive report generated via Gemini 2.0 Flash AI.")
+                else:
+                    st.info("Executive report generated via Deterministic Fallback Engine (Gemini API offline/unconfigured).")
             else:
                 st.session_state.ai_summary = _manual_fallback(data)
-                st.success("Executive report generated (Deterministic Fallback Engine).")
+                st.info("Executive report generated via Deterministic Fallback Engine.")
         except Exception as e:
             st.error(f"Report generation error: {e}")
 
