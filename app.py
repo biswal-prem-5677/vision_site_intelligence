@@ -67,6 +67,23 @@ def _get_gemini_api_key() -> str:
         pass
     if not key:
         key = os.environ.get("GEMINI_API_KEY", "")
+    if not key:
+        for env_file in [".env", ".env.example"]:
+            if os.path.exists(env_file):
+                try:
+                    with open(env_file, "r", encoding="utf-8") as f:
+                        for line in f:
+                            if line.strip().startswith("GEMINI_API_KEY"):
+                                parts = line.strip().split("=", 1)
+                                if len(parts) == 2:
+                                    extracted = parts[1].strip("'\" \r\n")
+                                    if extracted and "your_gemini" not in extracted.lower():
+                                        key = extracted
+                                        break
+                except Exception:
+                    pass
+            if key:
+                break
     return key
 
 
