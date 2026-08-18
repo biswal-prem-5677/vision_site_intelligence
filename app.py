@@ -360,6 +360,59 @@ if "_frame_skip" not in st.session_state:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Camera & Helper Functions (defined before sidebar usage)
+# ─────────────────────────────────────────────────────────────────────────────
+def _start_camera():
+    if st.session_state.camera_running:
+        return
+    try:
+        if st.session_state.cam is None:
+            st.session_state.cam = Camera()
+        if st.session_state.det is None:
+            st.session_state.det = Detector()
+        if st.session_state.trk is None:
+            st.session_state.trk = SimpleTracker()
+
+        if st.session_state.gemini_svc is None:
+            api_key = _get_gemini_api_key()
+            if api_key and "your_gemini" not in api_key.lower() and len(api_key) > 10:
+                st.session_state.gemini_svc = GeminiService(api_key)
+
+        if st.session_state.cam.start():
+            st.session_state.camera_running = True
+            st.session_state.session_events = []
+            st.session_state.trk = SimpleTracker()
+            st.session_state.last_frame_time = 0.0
+            st.session_state.last_summary_time = 0.0
+            st.session_state._last_process_time = 0.0
+            st.session_state.ai_summary = "Camera active — visit AI Reports for site summary."
+        else:
+            st.error("Cannot open camera — check webcam connection")
+    except Exception as e:
+        st.error(f"Camera error: {e}")
+
+
+def _stop_camera():
+    if st.session_state.cam:
+        st.session_state.cam.stop()
+    st.session_state.camera_running = False
+    st.session_state.frame_buffer = None
+    st.session_state.active_violations = 0
+
+
+def _clear_data():
+    clear_all_data()
+    st.session_state.session_events = []
+    st.session_state.metrics = SiteMetrics()
+    st.session_state.ai_summary = "Data cleared. Start camera to begin."
+    st.session_state.trk = SimpleTracker()
+    st.session_state.frame_buffer = None
+    st.session_state.active_violations = 0
+    st.session_state.fps = 0.0
+    st.session_state.inference_fps = 0.0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Sidebar Navigation
 # ─────────────────────────────────────────────────────────────────────────────
 def nav_page(label: str, icon: str) -> bool:
@@ -432,58 +485,13 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    if st.button("Clear All Data", use_container_width=True):
+    st.caption("Data Reset")
+    confirm_clear = st.checkbox("Confirm data reset", value=False, key="chk_confirm_reset")
+    if st.button("Clear All Data", use_container_width=True, disabled=not confirm_clear):
         _clear_data()
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Camera Helpers
-# ─────────────────────────────────────────────────────────────────────────────
-def _start_camera():
-    if st.session_state.camera_running:
-        return
-    try:
-        if st.session_state.cam is None:
-            st.session_state.cam = Camera()
-        if st.session_state.det is None:
-            st.session_state.det = Detector()
-        if st.session_state.trk is None:
-            st.session_state.trk = SimpleTracker()
-
-        if st.session_state.gemini_svc is None:
-            api_key = _get_gemini_api_key()
-            if api_key and "your_gemini" not in api_key.lower() and len(api_key) > 10:
-                st.session_state.gemini_svc = GeminiService(api_key)
-
-        if st.session_state.cam.start():
-            st.session_state.camera_running = True
-            st.session_state.session_events = []
-            st.session_state.trk = SimpleTracker()
-            st.session_state.last_frame_time = 0.0
-            st.session_state.last_summary_time = 0.0
-            st.session_state._last_process_time = 0.0
-            st.session_state.ai_summary = "Camera active — visit AI Reports for site summary."
-        else:
-            st.error("Cannot open camera — check webcam connection")
-    except Exception as e:
-        st.error(f"Camera error: {e}")
-
-
-def _stop_camera():
-    if st.session_state.cam:
-        st.session_state.cam.stop()
-    st.session_state.camera_running = False
-    st.session_state.frame_buffer = None
-    st.session_state.active_violations = 0
-
-
-def _clear_data():
-    clear_all_data()
-    st.session_state.session_events = []
-    st.session_state.metrics = SiteMetrics()
-    st.session_state.ai_summary = "Data cleared. Start camera to begin."
-    st.session_state.trk = SimpleTracker()
-    st.success("All data cleared")
+        st.success("All data cleared!")
+        time.sleep(0.3)
+        st.rerun()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -504,8 +512,11 @@ def process_frame() -> bool:
     det = st.session_state.det
     trk = st.session_state.trk
 
+    if cam is None or det is None or trk is None or not getattr(cam, "running", False):
+        return False
+
     ret, frame = cam.read()
-    if not ret:
+    if not ret or frame is None:
         return False
 
     now = time.time()
@@ -680,10 +691,6 @@ def render_dashboard():
 
     st.markdown("<br/>", unsafe_allow_html=True)
 
-    if not st.session_state.camera_running:
-        _offline_prompt()
-        return
-
     # Camera preview + panels
     cam_col, right = st.columns([2, 1])
     with cam_col:
@@ -745,14 +752,11 @@ def render_dashboard():
 def render_live_monitor():
     page_title("Live Monitor", "Real-time computer vision feed")
 
-    if not st.session_state.camera_running:
-        _offline_prompt()
-        return
-
     # Controls row
     ctrl = st.columns(4)
     with ctrl[0]:
-        st.metric("Camera", "Connected", delta="Live")
+        cam_state = "Connected" if st.session_state.camera_running else "Disconnected"
+        st.metric("Camera", cam_state, delta="Live" if st.session_state.camera_running else "Offline")
     with ctrl[1]:
         st.metric("FPS", f"{st.session_state.fps:.1f}")
     with ctrl[2]:
@@ -980,31 +984,24 @@ def render_analytics():
     page_title("Analytics", "Operational intelligence & trends")
 
     m = st.session_state.metrics
+    session_events = st.session_state.session_events
+    high_risk_session = sum(
+        1 for e in session_events
+        if (isinstance(e, dict) and e.get("severity") == "HIGH") or (hasattr(e, "severity") and e.severity == "HIGH")
+    )
 
-    # Top metrics
+    # Current Session KPIs
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         _kpi_card("Avg Utilisation", f"{m.avg_utilisation:.1f}%", "all equipment", "green")
     with c2:
-        events = get_recent_events(100)
-        st.caption("")
-        st.caption("")
-        st.metric("Total Events", len(events))
+        _kpi_card("Session Events", str(len(session_events)), "active session", "blue")
     with c3:
-        high_risk = sum(1 for e in events if e.get("severity") == "HIGH")
-        st.caption("")
-        st.caption("")
-        st.metric("High-Risk Events", high_risk)
+        _kpi_card("High-Risk Events", str(high_risk_session), "active session", "red")
     with c4:
-        st.caption("")
-        st.caption("")
-        st.metric("Workers", m.worker_count)
+        _kpi_card("Workers", str(m.worker_count), "detected", "purple")
 
     st.markdown("<br/>", unsafe_allow_html=True)
-
-    if not st.session_state.camera_running:
-        st.caption("Start camera to generate session analytics.")
-        return
 
     tracked = _get_tracked_from_session()
 
@@ -1012,7 +1009,7 @@ def render_analytics():
     col_a, col_b = st.columns(2)
     with col_a:
         st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("ACTIVE vs IDLE")
+        st.caption("ACTIVE vs IDLE (SESSION)")
         _render_active_idle_chart(tracked)
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -1026,8 +1023,14 @@ def render_analytics():
 
     # Event distribution
     st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.caption("EVENT SEVERITY DISTRIBUTION")
-    _render_event_chart(events)
+    st.caption("EVENT SEVERITY DISTRIBUTION (SESSION)")
+    event_dicts = []
+    for e in session_events:
+        if isinstance(e, dict):
+            event_dicts.append(e)
+        elif hasattr(e, "severity"):
+            event_dicts.append({"severity": e.severity})
+    _render_event_chart(event_dicts)
     st.markdown("</div>", unsafe_allow_html=True)
 
     # Safety score gauge
@@ -1035,6 +1038,15 @@ def render_analytics():
     st.markdown('<div class="panel">', unsafe_allow_html=True)
     st.caption("SAFETY SCORE")
     _render_safety_gauge(m.safety_score, m.risk_level)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # Persisted Historical Analytics Panel
+    st.markdown("<br/>", unsafe_allow_html=True)
+    st.markdown('<div class="panel">', unsafe_allow_html=True)
+    st.caption("PERSISTED HISTORICAL ANALYTICS (DATABASE)")
+    db_events = get_recent_events(100)
+    st.write(f"- Total Historical Events Logged: {len(db_events)}")
+    st.write(f"- High-Risk Historical Events: {sum(1 for e in db_events if e.get('severity') == 'HIGH')}")
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -1163,22 +1175,22 @@ def render_settings():
 
         # Camera
         cam_status = "Connected" if st.session_state.camera_running else "Disconnected"
-        st.markdown(f"Camera: {_status_badge(cam_status)}")
+        st.markdown(f"Camera: {_status_badge(cam_status)}", unsafe_allow_html=True)
 
         # Model
-        st.markdown(f"Model: {_status_badge('YOLOv8n')}")
+        st.markdown(f"Model: {_status_badge('YOLOv8n')}", unsafe_allow_html=True)
 
         # Gemini
-        api_key = os.environ.get("GEMINI_API_KEY", "")
+        api_key = _get_gemini_api_key()
         gemini_on = bool(api_key and len(api_key) > 10 and "your_gemini" not in api_key.lower())
         gemini_status = "Configured" if gemini_on else "Not configured"
-        st.markdown(f"Gemini AI: {_status_badge(gemini_status)}")
+        st.markdown(f"Gemini AI: {_status_badge(gemini_status)}", unsafe_allow_html=True)
 
         # DB
         import os as _os
         db_exists = _os.path.exists("data/site.db")
         db_status = "Active" if db_exists else "Not initialized"
-        st.markdown(f"Database: {_status_badge(db_status)}")
+        st.markdown(f"Database: {_status_badge(db_status)}", unsafe_allow_html=True)
 
         st.markdown("</div>", unsafe_allow_html=True)
 

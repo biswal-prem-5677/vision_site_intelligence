@@ -1,16 +1,34 @@
 from typing import Optional
+import warnings
 from app.config import GEMINI_MODEL
-import google.generativeai as genai
+
+# Suppress deprecation warning if present
+warnings.filterwarnings("ignore", category=FutureWarning, module="google.generativeai")
 
 
 class GeminiService:
     def __init__(self, api_key: str):
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(GEMINI_MODEL)
-        self.enabled = bool(api_key)
+        self.api_key = api_key
+        self.enabled = bool(api_key and len(api_key) > 10 and "your_gemini" not in api_key.lower())
+        self.client = None
+        self.use_new_sdk = False
+
+        if self.enabled:
+            try:
+                from google import genai
+                self.client = genai.Client(api_key=api_key)
+                self.use_new_sdk = True
+            except Exception:
+                try:
+                    import google.generativeai as legacy_genai
+                    legacy_genai.configure(api_key=api_key)
+                    self.client = legacy_genai.GenerativeModel(GEMINI_MODEL)
+                    self.use_new_sdk = False
+                except Exception:
+                    self.enabled = False
 
     def generate_summary(self, metrics: dict) -> str:
-        if not self.enabled:
+        if not self.enabled or self.client is None:
             return self._fallback_summary(metrics)
 
         prompt = f"""You are a construction site safety analyst. Generate a concise site intelligence summary based on these metrics:
@@ -29,8 +47,15 @@ Format your response as:
 Keep it under 120 words. Be direct and professional."""
 
         try:
-            response = self.model.generate_content(prompt)
-            return response.text.strip()
+            if self.use_new_sdk:
+                response = self.client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=prompt,
+                )
+                return response.text.strip()
+            else:
+                response = self.client.generate_content(prompt)
+                return response.text.strip()
         except Exception:
             return self._fallback_summary(metrics)
 
