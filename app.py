@@ -127,9 +127,16 @@ if "_frame_skip" not in st.session_state:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 2. High Density Industrial Command Center CSS
+# 2. High Density Industrial Command Center CSS & Social Meta
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
+<head>
+    <meta property="og:title" content="Vision-Driven Site Intelligence | Industrial Command Center" />
+    <meta property="og:description" content="Real-Time Computer Vision • Multi-Zone Safety Engine • Operational Analytics" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://vision-site-intelligence.streamlit.app" />
+    <meta property="og:site_name" content="Vision-Driven Site Intelligence" />
+</head>
 <style>
     :root {
         --bg-primary: #090d12;
