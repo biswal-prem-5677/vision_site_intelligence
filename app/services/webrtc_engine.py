@@ -79,19 +79,21 @@ class WebRTCVideoProcessor(VideoProcessorBase):
             # Annotations
             ann = img.copy()
             if self.danger_zone_enabled:
-                pts = np.array(
-                    [[int(p[0] * w), int(p[1] * h)] for p in DANGER_ZONE_POLYGON],
-                    dtype=np.int32,
-                )
-                overlay = ann.copy()
-                cv2.fillPoly(overlay, [pts], (0, 0, 120))
-                cv2.addWeighted(overlay, 0.3, ann, 0.7, 0, ann)
-                cv2.polylines(ann, [pts], isClosed=True, color=(0, 0, 255), thickness=2)
-                cv2.putText(
-                    ann, "RESTRICTED ZONE",
-                    (pts[0][0] + 5, pts[0][1] - 8),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2,
-                )
+                for zone in SAFETY_ZONES:
+                    pts = np.array(
+                        [[int(p[0] * w), int(p[1] * h)] for p in zone["polygon"]],
+                        dtype=np.int32,
+                    )
+                    bgr = zone["color_bgr"]
+                    overlay = ann.copy()
+                    cv2.fillPoly(overlay, [pts], (int(bgr[0] * 0.3), int(bgr[1] * 0.3), int(bgr[2] * 0.3)))
+                    cv2.addWeighted(overlay, 0.35, ann, 0.65, 0, ann)
+                    cv2.polylines(ann, [pts], isClosed=True, color=bgr, thickness=2)
+                    cv2.putText(
+                        ann, zone["name"].upper(),
+                        (pts[0][0] + 5, max(pts[0][1] - 6, 15)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, bgr, 2,
+                    )
 
             for obj in tracked:
                 color = (0, 0, 255) if obj.in_zone else (0, 255, 0)

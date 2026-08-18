@@ -11,6 +11,7 @@ from typing import List, Tuple
 from datetime import datetime
 from app.schemas import TrackedObject, SafetyEvent
 from app.config import (
+    SAFETY_ZONES,
     DANGER_ZONE_POLYGON,
     PENALTY_DANGER_ZONE,
     PENALTY_NO_HELMET,
@@ -43,12 +44,11 @@ def check_safety(
     now: float,
 ) -> Tuple[List[SafetyEvent], int]:
     """
-    Check safety for all tracked objects.
+    Check safety across all categorized Safety Zones for tracked objects.
 
     Returns:
         events: list of new safety events this frame
-        active_violations: count of objects currently in the danger zone
-                           (used for safety score)
+        active_violations: count of objects currently in any active danger/safety zone
     """
     events: List[SafetyEvent] = []
     active_violations = 0
@@ -56,52 +56,62 @@ def check_safety(
     for obj in tracked:
         nx = obj.cx / frame_width
         ny = obj.cy / frame_height
-        in_zone = point_in_polygon(nx, ny, DANGER_ZONE_POLYGON)
-        obj.in_zone = in_zone
 
-        # ── Zone lifecycle ─────────────────────────────────────────────────
-        if in_zone:
-            active_violations += 1
-            if not obj.zone_alert_sent:
-                # ENTRY event
-                events.append(SafetyEvent(
-                    event_type="danger_zone_entry",
-                    severity="HIGH",
-                    track_id=obj.track_id,
-                    message=f"Worker #{obj.track_id:02d} entered restricted zone",
-                ))
-                obj.zone_alert_sent = True
-                obj.zone_enter_time = now
-                obj.zone_last_sustained = now
-            else:
-                # Already in zone — check for sustained violation
-                if (now - obj.zone_last_sustained) >= SUSTAINED_VIOLATION_INTERVAL:
+        if obj.active_zone_states is None:
+            obj.active_zone_states = {}
+
+        in_any_zone = False
+
+        # Evaluate against each defined Safety Zone
+        for zone in SAFETY_ZONES:
+            zone_id = zone["id"]
+            zone_name = zone["name"]
+            zone_severity = zone["severity"]
+            zone_icon = zone["icon"]
+            zone_poly = zone["polygon"]
+
+            in_this_zone = point_in_polygon(nx, ny, zone_poly)
+
+            if in_this_zone:
+                in_any_zone = True
+                active_violations += 1
+
+                if zone_id not in obj.active_zone_states:
+                    # ENTRY event for this specific zone
                     events.append(SafetyEvent(
-                        event_type="danger_zone_sustained",
-                        severity="HIGH",
+                        event_type=f"zone_entry_{zone_id}",
+                        severity=zone_severity,
                         track_id=obj.track_id,
-                        message=f"Worker #{obj.track_id:02d} sustained restricted zone violation",
+                        message=f"Worker #{obj.track_id:02d} entered {zone_name} {zone_icon}",
                     ))
-                    obj.zone_last_sustained = now
-        else:
-            if obj.zone_alert_sent:
-                # EXIT / CLEARED
-                events.append(SafetyEvent(
-                    event_type="danger_zone_cleared",
-                    severity="LOW",
-                    track_id=obj.track_id,
-                    message=f"Worker #{obj.track_id:02d} cleared restricted zone",
-                ))
-            obj.zone_alert_sent = False
-            obj.zone_enter_time = None
-            obj.zone_last_sustained = None
+                    obj.active_zone_states[zone_id] = {
+                        "alert_sent": True,
+                        "enter_time": now,
+                        "last_sustained": now,
+                    }
+                else:
+                    # Already in this zone — check for sustained violation
+                    st_info = obj.active_zone_states[zone_id]
+                    if (now - st_info["last_sustained"]) >= SUSTAINED_VIOLATION_INTERVAL:
+                        events.append(SafetyEvent(
+                            event_type=f"zone_sustained_{zone_id}",
+                            severity=zone_severity,
+                            track_id=obj.track_id,
+                            message=f"Worker #{obj.track_id:02d} sustained violation in {zone_name} {zone_icon}",
+                        ))
+                        st_info["last_sustained"] = now
+            else:
+                if zone_id in obj.active_zone_states:
+                    # EXIT / CLEARED event for this specific zone
+                    events.append(SafetyEvent(
+                        event_type=f"zone_cleared_{zone_id}",
+                        severity="LOW",
+                        track_id=obj.track_id,
+                        message=f"Worker #{obj.track_id:02d} cleared {zone_name} {zone_icon}",
+                    ))
+                    del obj.active_zone_states[zone_id]
 
-        # ── PPE checks ─────────────────────────────────────────────────────
-        # Note: Standard YOLOv8n COCO does NOT have helmet/vest classes.
-        # PPE detection requires a construction-specific model.
-        # Stub kept for future integration — no fake detections.
-        if obj.confidence > 0.6:
-            pass
+        obj.in_zone = in_any_zone
 
     return events, active_violations
 

@@ -21,12 +21,52 @@ FRAME_HEIGHT = 480
 FPS_TARGET = 15
 PROCESS_FPS = 10  # Target inference FPS
 
-# Danger zone (normalized 0-1, set as polygon vertices)
+# Danger zone (legacy fallback)
 DANGER_ZONE_POLYGON = [
     (0.3, 0.2),
     (0.7, 0.2),
     (0.7, 0.5),
     (0.3, 0.5),
+]
+
+# Categorized Safety Zones
+SAFETY_ZONES = [
+    {
+        "id": "crane_swing",
+        "name": "Crane Swing Area",
+        "color_bgr": (0, 0, 255),        # Red
+        "color_hex": "#ef4444",
+        "icon": "🔴",
+        "severity": "HIGH",
+        "polygon": [(0.1, 0.1), (0.45, 0.1), (0.45, 0.45), (0.1, 0.45)],
+    },
+    {
+        "id": "excavation",
+        "name": "Excavation Zone",
+        "color_bgr": (0, 140, 255),      # Orange
+        "color_hex": "#f97316",
+        "icon": "🟠",
+        "severity": "HIGH",
+        "polygon": [(0.55, 0.1), (0.9, 0.1), (0.9, 0.45), (0.55, 0.45)],
+    },
+    {
+        "id": "restricted_personnel",
+        "name": "Restricted Personnel Area",
+        "color_bgr": (0, 0, 200),        # Deep Red
+        "color_hex": "#dc2626",
+        "icon": "🔴",
+        "severity": "HIGH",
+        "polygon": [(0.3, 0.55), (0.7, 0.55), (0.7, 0.9), (0.3, 0.9)],
+    },
+    {
+        "id": "equipment_operating",
+        "name": "Equipment Operating Area",
+        "color_bgr": (0, 230, 255),      # Yellow
+        "color_hex": "#eab308",
+        "icon": "🟡",
+        "severity": "MEDIUM",
+        "polygon": [(0.05, 0.55), (0.25, 0.55), (0.25, 0.9), (0.05, 0.9)],
+    },
 ]
 
 # Activity detection

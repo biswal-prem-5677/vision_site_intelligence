@@ -11,6 +11,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from app.config import (
+    SAFETY_ZONES,
     DANGER_ZONE_POLYGON,
     FRAME_WIDTH,
     FRAME_HEIGHT,
@@ -566,21 +567,23 @@ def process_frame() -> bool:
     # ── Annotate Frame ─────────────────────────────────────────────��─────────
     ann = frame.copy()
 
-    # Danger zone
+    # Safety zones
     if st.session_state.danger_zone_enabled:
-        pts = np.array(
-            [[int(p[0] * w), int(p[1] * h)] for p in DANGER_ZONE_POLYGON],
-            dtype=np.int32,
-        )
-        overlay = ann.copy()
-        cv2.fillPoly(overlay, [pts], (0, 0, 120))
-        cv2.addWeighted(overlay, 0.3, ann, 0.7, 0, ann)
-        cv2.polylines(ann, [pts], isClosed=True, color=(0, 0, 255), thickness=2)
-        cv2.putText(
-            ann, "RESTRICTED ZONE",
-            (pts[0][0] + 5, pts[0][1] - 8),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2,
-        )
+        for zone in SAFETY_ZONES:
+            pts = np.array(
+                [[int(p[0] * w), int(p[1] * h)] for p in zone["polygon"]],
+                dtype=np.int32,
+            )
+            bgr = zone["color_bgr"]
+            overlay = ann.copy()
+            cv2.fillPoly(overlay, [pts], (int(bgr[0] * 0.3), int(bgr[1] * 0.3), int(bgr[2] * 0.3)))
+            cv2.addWeighted(overlay, 0.35, ann, 0.65, 0, ann)
+            cv2.polylines(ann, [pts], isClosed=True, color=bgr, thickness=2)
+            cv2.putText(
+                ann, zone["name"].upper(),
+                (pts[0][0] + 5, max(pts[0][1] - 6, 15)),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.45, bgr, 2,
+            )
 
     # Tracks
     for obj in tracked:
@@ -877,15 +880,13 @@ def render_safety():
     col_a, col_b = st.columns(2)
     with col_a:
         st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.caption("ZONE CONFIGURATION")
-        if st.session_state.danger_zone_enabled:
-            st.caption("Zone monitoring is ENABLED. Workers entering the red polygon trigger safety events.")
-        else:
-            st.caption("Zone monitoring is DISABLED. No zone-based events will be generated.")
-        st.caption(
-            "Adjust zone coordinates in Settings. "
-            "Default zone covers center 40% width × 30% height."
-        )
+        st.caption("CONFIGURED SAFETY ZONES")
+        for z in SAFETY_ZONES:
+            st.markdown(
+                f"<div style='margin-bottom:8px;'>{z['icon']} <strong>{z['name']}</strong> — "
+                f"<span style='color:{z['color_hex']}; font-weight:600;'>{z['severity']} RISK</span></div>",
+                unsafe_allow_html=True,
+            )
         st.markdown("</div>", unsafe_allow_html=True)
 
     with col_b:
@@ -1196,11 +1197,15 @@ def render_settings():
 
     st.markdown("<br/>", unsafe_allow_html=True)
     st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.caption("DANGER ZONE")
-    st.caption("Current polygon (normalized 0-1 coordinates):")
-    for i, pt in enumerate(DANGER_ZONE_POLYGON):
-        st.write(f"  Vertex {i+1}: ({pt[0]:.2f}, {pt[1]:.2f})")
-    st.caption("Use the Danger Zone sliders in the sidebar to adjust.")
+    st.caption("SAFETY ZONES CONFIGURATION")
+    for z in SAFETY_ZONES:
+        st.markdown(
+            f"{z['icon']} **{z['name']}** (<span style='color:{z['color_hex']}; font-weight:600;'>{z['severity']} RISK</span>)",
+            unsafe_allow_html=True,
+        )
+        for i, pt in enumerate(z['polygon']):
+            st.write(f"  • Vertex {i+1}: ({pt[0]:.2f}, {pt[1]:.2f})")
+        st.markdown("<br/>", unsafe_allow_html=True)
 
     st.caption("Equipment classes detected:")
     st.write(", ".join(c.title() for c in sorted(EQUIPMENT_CLASSES)))

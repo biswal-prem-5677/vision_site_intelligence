@@ -35,6 +35,7 @@ class TrackedObject:
     zone_alert_sent: bool = False
     zone_enter_time: Optional[float] = None
     zone_last_sustained: Optional[float] = None
+    active_zone_states: Optional[dict] = None  # zone_id -> {alert_sent: bool, enter_time: float, last_sustained: float}
 
 
 @dataclass
