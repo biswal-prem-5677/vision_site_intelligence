@@ -1191,7 +1191,8 @@ def _get_tracked_from_session():
 
 def _render_active_idle_chart(tracked):
     try:
-        import plotly.express as px
+        import importlib
+        px = importlib.import_module("plotly.express")
         asset_items = [o for o in tracked if _is_equipment(o.class_name)]
         if not asset_items:
             st.caption("No equipment tracked.")
@@ -1217,13 +1218,14 @@ def _render_active_idle_chart(tracked):
         fig.update_xaxes(gridcolor="#253040")
         fig.update_yaxes(gridcolor="#253040")
         st.plotly_chart(fig)
-    except ImportError:
+    except Exception:
         st.caption("Install plotly for charts.")
 
 
 def _render_util_chart(tracked):
     try:
-        import plotly.express as px
+        import importlib
+        px = importlib.import_module("plotly.express")
         asset_items = [o for o in tracked if _is_equipment(o.class_name)]
         if not asset_items:
             st.caption("No equipment tracked.")
@@ -1254,13 +1256,14 @@ def _render_util_chart(tracked):
         fig.update_xaxes(gridcolor="#253040")
         fig.update_yaxes(gridcolor="#253040", range=[0, 100])
         st.plotly_chart(fig)
-    except ImportError:
+    except Exception:
         st.caption("Install plotly for charts.")
 
 
 def _render_event_chart(events):
     try:
-        import plotly.express as px
+        import importlib
+        px = importlib.import_module("plotly.express")
         if not events:
             st.caption("No events to chart.")
             return

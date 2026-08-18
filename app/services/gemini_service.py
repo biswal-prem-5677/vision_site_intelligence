@@ -2,6 +2,8 @@ from typing import Optional
 import warnings
 from app.config import GEMINI_MODEL
 
+import importlib
+
 # Suppress deprecation warning if present
 warnings.filterwarnings("ignore", category=FutureWarning, module="google.generativeai")
 
@@ -16,12 +18,12 @@ class GeminiService:
 
         if self.enabled:
             try:
-                from google import genai
-                self.client = genai.Client(api_key=api_key)
+                genai_module = importlib.import_module("google.genai")
+                self.client = genai_module.Client(api_key=api_key)
                 self.use_new_sdk = True
             except Exception:
                 try:
-                    import google.generativeai as legacy_genai
+                    legacy_genai = importlib.import_module("google.generativeai")
                     legacy_genai.configure(api_key=api_key)
                     self.client = legacy_genai.GenerativeModel(GEMINI_MODEL)
                     self.use_new_sdk = False
